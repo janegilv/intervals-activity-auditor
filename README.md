@@ -1,3 +1,14 @@
+# What I ended up doing
+
+- Remove all garmin connect and intervals.icu that are very short and not present in strava.
+- Duplicate/overlapping activities in intervals.icu:
+  - Trimmed/cropped activities: Delete the garmin activities and keep the strava one.
+  - Split activities: Delete the garmin activities, keep the strava ones.
+  - Merged activities: Delete the garmin activities, keep the strava ones.
+  - 
+## More detailed information
+ - Downloading trimmed activities from garmin seems to download the original activity and not the trimmed one. I have only tried exporting original from garmin, not the full email download.
+
 # Intervals.icu Activity Auditor
 
 A read-only Python CLI for auditing Intervals.icu activities.
