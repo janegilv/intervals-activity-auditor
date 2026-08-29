@@ -100,6 +100,14 @@ lost, and the remaining stubs are simply picked up next time. Add `--strava-auto
 instead wait out Strava's `Retry-After` (repeating for as long as it keeps happening) and
 finish the run in one go, unattended.
 
+Add `--strava-debug LEVEL` to see what's actually coming back from Strava as it happens,
+instead of only noticing bad data later in a check's output:
+
+- `--strava-debug 1` -- one timestamped summary line per activity (name/type/start/durations/distance).
+- `--strava-debug 2` -- also dumps the full raw Strava payload per activity. A lot of
+  output for a large run; redirect stdout to a file, e.g.
+  `python main.py --offline --enrich-strava --strava-debug 2 > strava_debug.log`.
+
 ## Deleting activities / rebuilding the cache
 
 Deleting `intervals.sqlite` and resyncing has been the way to make the local cache

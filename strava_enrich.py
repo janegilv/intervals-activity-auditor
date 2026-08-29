@@ -44,7 +44,23 @@ def _fetch_with_optional_retry(client, activity_id, auto_retry_rate_limit, on_wa
             time.sleep(wait_seconds)
 
 
-def enrich_strava_stubs(cache, client, activities=None, auto_retry_rate_limit=False) -> dict:
+def _timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def _summarize(payload: dict) -> str:
+    """One line covering what usually matters for spotting bad data at a
+    glance -- name, type, start, and every duration/distance field -- without
+    dumping the whole payload."""
+    return (
+        f"name={payload.get('name')!r} type={(payload.get('type') or payload.get('sport_type'))!r} "
+        f"start={payload.get('start_date') or payload.get('start_date_local')} "
+        f"moving_time={payload.get('moving_time')} elapsed_time={payload.get('elapsed_time')} "
+        f"distance={payload.get('distance')}"
+    )
+
+
+def enrich_strava_stubs(cache, client, activities=None, auto_retry_rate_limit=False, debug=0) -> dict:
     """Find cached Strava-stub activities with no recorded result yet, look
     each one up on Strava, and persist the outcome back into the same sqlite
     row via cache.upsert_many.
@@ -67,6 +83,13 @@ def enrich_strava_stubs(cache, client, activities=None, auto_retry_rate_limit=Fa
     unattended wait if you've hit Strava's daily limit rather than the
     15-minute one, since Strava doesn't say which one you hit.
 
+    debug: 0 (default) is silent. 1 prints one timestamped summary line per
+    activity (name/type/start/durations/distance) -- this is how the
+    631-day-duration data issue would have been visible at fetch time
+    instead of only showing up later in a check's output. 2 additionally
+    dumps the full raw Strava payload per activity, which is a lot of
+    output; redirect stdout to a file for a long run at that level.
+
     Returns a summary dict: {"enriched": [...ids], "not_found": [...ids],
     "already_cached": count, "errors": {id: message}, "rate_limited": bool}.
     """
@@ -79,10 +102,18 @@ def enrich_strava_stubs(cache, client, activities=None, auto_retry_rate_limit=Fa
         "already_cached": already_cached, "rate_limited": False,
     }
 
+    def log(message, level=1):
+        if debug >= level:
+            print(f"[{_timestamp()}] [strava-debug] {message}")
+
     def on_wait(activity_id, wait_seconds):
-        print(f"  [strava] rate limited while fetching {activity_id}; waiting {wait_seconds}s before retrying...")
+        prefix = f"[{_timestamp()}] " if debug else ""
+        print(f"{prefix}  [strava] rate limited while fetching {activity_id}; waiting {wait_seconds}s before retrying...")
 
     for stub in stubs:
+        # Only at level 2 -- at level 1 this would just be noise ahead of the
+        # one line per activity that level 1 is meant to be.
+        log(f"fetching {stub.id} (cached stub start_date_local={stub.start_date_local!r})", level=2)
         try:
             payload = _fetch_with_optional_retry(client, stub.id, auto_retry_rate_limit, on_wait=on_wait)
         except StravaRateLimitError:
@@ -90,6 +121,7 @@ def enrich_strava_stubs(cache, client, activities=None, auto_retry_rate_limit=Fa
             # not mid-write -- everything resolved so far is already
             # committed to sqlite (one upsert per activity, below), so the
             # remaining stubs simply get picked up on the next run.
+            log(f"{stub.id}: rate limited, stopping this run")
             result["rate_limited"] = True
             result["errors"][stub.id] = (
                 "rate limited by Strava; stopping without retrying (already-resolved activities "
@@ -98,10 +130,12 @@ def enrich_strava_stubs(cache, client, activities=None, auto_retry_rate_limit=Fa
             )
             break
         except Exception as e:  # noqa: BLE001 - a transient failure for this one id shouldn't abort the batch
+            log(f"{stub.id}: error - {e}")
             result["errors"][stub.id] = str(e)
             continue
 
         if payload is None:
+            log(f"{stub.id}: not found on Strava (404)")
             # Confirmed absent on Strava -- record that so it's never re-queried,
             # without inventing any name/type/duration data for it.
             not_found_record = dict(stub.raw)
@@ -113,6 +147,12 @@ def enrich_strava_stubs(cache, client, activities=None, auto_retry_rate_limit=Fa
             cache.upsert_many([not_found_record])
             result["not_found"].append(stub.id)
             continue
+
+        # Level 1: exactly one line, built from what Strava actually sent back
+        # (before any of our own merging/normalizing).
+        log(f"{stub.id}: enriched - {_summarize(payload)}")
+        # Level 2: everything, verbatim.
+        log(f"{stub.id}: full payload:\n{json.dumps(payload, indent=2, default=str)}", level=2)
 
         merged = dict(payload)
         merged["id"] = stub.id

@@ -41,6 +41,15 @@ def parse_args():
              "left off next time.",
     )
     p.add_argument(
+        "--strava-debug", type=int, choices=[1, 2], metavar="LEVEL",
+        help="With --enrich-strava: print timestamped debug logging. 1 = one summary line "
+             "per activity (name/type/start/durations/distance) -- useful for catching bad "
+             "data (e.g. an implausible duration) at fetch time instead of only noticing it "
+             "later in a check's output. 2 = also dump the full raw Strava payload per "
+             "activity (a lot of output; redirect stdout to a file). Omit for no debug "
+             "output (default).",
+    )
+    p.add_argument(
         "--export-strava-cache", metavar="PATH",
         help="Write every resolved Strava record (enriched or confirmed not-found) to PATH as "
              "JSON, then exit without syncing or running checks. Run this before deleting "
@@ -127,7 +136,10 @@ def main():
                 settings.strava_client_id, settings.strava_client_secret,
                 settings.strava_refresh_token, settings.timeout_seconds,
             )
-            strava_result = enrich_strava_stubs(cache, strava_client, auto_retry_rate_limit=args.strava_auto_retry)
+            strava_result = enrich_strava_stubs(
+                cache, strava_client,
+                auto_retry_rate_limit=args.strava_auto_retry, debug=args.strava_debug or 0,
+            )
             print(
                 f"Strava enrichment: {len(strava_result['enriched'])} fetched, "
                 f"{strava_result['already_cached']} already cached (skipped), "
