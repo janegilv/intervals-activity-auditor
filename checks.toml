@@ -1,0 +1,15 @@
+[duplicate_overlap]
+enabled = true
+minimum_overlap_percent = 10.0
+maximum_start_difference_seconds = 10000
+maximum_duration_difference_percent = 100.0
+require_same_type = false
+ignore_activities = ["REDACTED-ACTIVITY-ID"]
+
+[under_time_limit]
+enabled = true
+maximum_duration_seconds = 100
+
+[garmin_link_only]
+enabled = true
+# The exact Garmin metadata field can be adapted in checks/garmin_link_only.py.
