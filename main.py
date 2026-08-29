@@ -29,6 +29,13 @@ def parse_args():
              "(requires STRAVA_CLIENT_ID/SECRET/REFRESH_TOKEN in .env; see strava_auth_setup.py). "
              "Already-enriched activities are never re-fetched, so repeat runs are rate-limit-safe.",
     )
+    p.add_argument(
+        "--strava-auto-retry", action="store_true",
+        help="With --enrich-strava: if Strava rate limits you, wait out its Retry-After "
+             "(repeating for as long as it keeps happening) and finish this run instead of "
+             "stopping. Off by default -- a rate limit stops the run and picks up where it "
+             "left off next time.",
+    )
     return p.parse_args()
 
 def main():
@@ -74,15 +81,21 @@ def main():
                 settings.strava_client_id, settings.strava_client_secret,
                 settings.strava_refresh_token, settings.timeout_seconds,
             )
-            result = enrich_strava_stubs(cache, strava_client)
+            strava_result = enrich_strava_stubs(cache, strava_client, auto_retry_rate_limit=args.strava_auto_retry)
             print(
-                f"Strava enrichment: {len(result['enriched'])} fetched, "
-                f"{result['already_cached']} already cached (skipped), "
-                f"{len(result['not_found'])} not found on Strava, "
-                f"{len(result['errors'])} errors."
+                f"Strava enrichment: {len(strava_result['enriched'])} fetched, "
+                f"{strava_result['already_cached']} already cached (skipped), "
+                f"{len(strava_result['not_found'])} not found on Strava, "
+                f"{len(strava_result['errors'])} errors."
             )
-            for activity_id, message in result["errors"].items():
+            for activity_id, message in strava_result["errors"].items():
                 print(f"  {activity_id}: {message}")
+            if strava_result["rate_limited"] and not args.strava_auto_retry:
+                print(
+                    "\nStopped early due to Strava's rate limit. Run again later to pick up where "
+                    "this left off, or re-run now with --strava-auto-retry to wait it out and "
+                    "finish automatically instead of stopping."
+                )
 
         activities = cache.all_activities()
         enabled = args.check or [name for name, cfg in settings.checks.items() if cfg.get("enabled", False)]
