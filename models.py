@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 @dataclass
@@ -25,9 +25,18 @@ class Activity:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
+        # start_date_local (used as a fallback when start_date/UTC is missing,
+        # e.g. some manually-logged activities) has no offset, which produces a
+        # timezone-naive datetime. Comparing that against the timezone-aware
+        # datetimes parsed from start_date crashes (TypeError) as soon as both
+        # kinds end up sorted/compared together, e.g. in duplicate_overlap. Treat
+        # a naive value as UTC so every Activity.start is always comparable.
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
 
     @property
     def end(self) -> datetime | None:

@@ -1,5 +1,4 @@
 from .base import ActivityCheck
-import ipdb
 
 class DuplicateOverlapCheck(ActivityCheck):
     name = "duplicate_overlap"
@@ -24,9 +23,6 @@ class DuplicateOverlapCheck(ActivityCheck):
             #import pprint
 
             for b in ordered[i + 1:]:
-                #if a.id=="REDACTED-ACTIVITY-ID" and b.id=="REDACTED-ACTIVITY-ID":
-                #  ipdb.set_trace()
-
                 if b.start >= a.end:
                     break
                 if require_same_type and a.activity_type != b.activity_type:

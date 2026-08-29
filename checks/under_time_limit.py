@@ -1,9 +1,8 @@
 from .base import ActivityCheck
 
 class UnderTimeLimitCheck(ActivityCheck):
-    # EXAMPLE CHECK: disabled by default in checks.toml.
     name = "under_time_limit"
-    description = "Example: finds activities shorter than a configured duration."
+    description = "Finds activities shorter than a configured duration."
 
     def run(self, activities):
         limit = int(self.config.get("maximum_duration_seconds", 100))

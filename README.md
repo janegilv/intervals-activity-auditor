@@ -71,17 +71,9 @@ Enabled by default. It compares overlapping activities and reports the exact rea
 
 ### under_time_limit
 
-Example implementation included but disabled.
+Enabled. Flags activities shorter than `maximum_duration_seconds` (see `checks.toml`).
 
-Enable it:
-
-```toml
-[under_time_limit]
-enabled = true
-maximum_duration_seconds = 600
-```
-
-Or run once without enabling it permanently:
+Run it standalone without touching `checks.toml`:
 
 ```bash
 python main.py --offline --check under_time_limit
@@ -89,7 +81,7 @@ python main.py --offline --check under_time_limit
 
 ### garmin_link_only
 
-Example/template included but disabled. API metadata can differ, so inspect cached `raw_json` and adapt `_is_garmin_only()` in `checks/garmin_link_only.py` to match your data.
+Enabled, but still under testing and development. API metadata can differ, so inspect cached `raw_json` and adapt `_is_garmin_only()` / `_strava_id_none()` in `checks/garmin_link_only.py` to match your data if the heuristic misfires.
 
 ## Add a new check
 

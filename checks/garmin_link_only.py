@@ -1,11 +1,11 @@
 from .base import ActivityCheck
 
 class GarminLinkOnlyCheck(ActivityCheck):
-    # EXAMPLE CHECK: disabled by default.
-    # API payload/source metadata can vary. Adapt _is_garmin_only() after inspecting
-    # cached raw_json from your account.
+    # Under active testing/development. API payload/source metadata can vary.
+    # Adapt _is_garmin() / _strava_id_none() after inspecting cached raw_json
+    # from your account if the heuristic misfires.
     name = "garmin_link_only"
-    description = "Example/template: finds activities that appear to have Garmin-only linkage."
+    description = "Finds activities that appear to have Garmin-only linkage (heuristic, still being tuned)."
 
     def _is_garmin(self, activity):
         raw = activity.raw
@@ -24,8 +24,6 @@ class GarminLinkOnlyCheck(ActivityCheck):
         for a in activities:
 
             if self._is_garmin(a) and self._strava_id_none(a):
-                #import ipdb
-                #ipdb.set_trace()
                 # TODO: Make this a configuration item?
                 # TODO: Clean up the function to avoid continue and double findings.append.
                 if a.elapsed_time<100:
