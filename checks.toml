@@ -15,3 +15,9 @@ maximum_duration_seconds = 100
 [garmin_link_only]
 enabled = true
 # The exact Garmin metadata field can be adapted in checks/garmin_link_only.py.
+
+[over_time_limit]
+enabled = true
+# 86400s = 24h. Flags activities longer than this as likely bad data
+# (e.g. a forgotten-to-stop tracker) rather than a real workout.
+maximum_duration_seconds = 86400

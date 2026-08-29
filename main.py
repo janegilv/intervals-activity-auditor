@@ -7,12 +7,14 @@ from intervals_api import IntervalsClient
 from cache import ActivityCache
 from checks.duplicate_overlap import DuplicateOverlapCheck
 from checks.under_time_limit import UnderTimeLimitCheck
+from checks.over_time_limit import OverTimeLimitCheck
 from checks.garmin_link_only import GarminLinkOnlyCheck
 from reporting import json_report, csv_report, markdown_report
 
 CHECKS = {
     "duplicate_overlap": DuplicateOverlapCheck,
     "under_time_limit": UnderTimeLimitCheck,
+    "over_time_limit": OverTimeLimitCheck,
     "garmin_link_only": GarminLinkOnlyCheck,
 }
 
