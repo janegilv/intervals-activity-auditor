@@ -14,6 +14,9 @@ class Settings:
     refresh_days: int
     timeout_seconds: int
     checks: dict
+    strava_client_id: str
+    strava_client_secret: str
+    strava_refresh_token: str
 
 def load_settings():
     api_key = os.getenv("INTERVALS_API_KEY", "").strip()
@@ -31,4 +34,8 @@ def load_settings():
         refresh_days=int(os.getenv("REFRESH_DAYS", "30")),
         timeout_seconds=int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
         checks=checks,
+        # Only required if --enrich-strava is used; left blank otherwise.
+        strava_client_id=os.getenv("STRAVA_CLIENT_ID", "").strip(),
+        strava_client_secret=os.getenv("STRAVA_CLIENT_SECRET", "").strip(),
+        strava_refresh_token=os.getenv("STRAVA_REFRESH_TOKEN", "").strip(),
     )

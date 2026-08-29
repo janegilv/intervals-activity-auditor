@@ -58,6 +58,38 @@ Analyse the local cache without contacting the API:
 python main.py --offline
 ```
 
+## Strava enrichment
+
+Some cached activities are Strava-only "stub" records: Intervals.icu has a reference to
+them but can't return full data for them via its API (`"source": "STRAVA"`, no name,
+type, or duration -- just a timestamp). This commonly happens when the Strava-side
+activity has been cropped, split, or merged independently of the Garmin-recorded copy,
+which breaks the `strava_id` link Intervals.icu stores on the original activity.
+
+`--enrich-strava` fetches full data for these stubs directly from the Strava API and
+writes it into the same local cache, so `duplicate_overlap` (and any other check) can
+work with the real thing instead of guessing from a single timestamp.
+
+One-time setup:
+
+1. Create a free app at https://www.strava.com/settings/api (Authorization Callback
+   Domain can just be `localhost`).
+2. Put the app's Client ID/Secret into `.env` as `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`.
+3. Run `python strava_auth_setup.py` and follow the prompts to authorize the app in your
+   browser. It prints a `STRAVA_REFRESH_TOKEN` to add to `.env`. This is a one-time step --
+   the refresh token doesn't expire unless you revoke the app's access on Strava.
+
+Then run:
+
+```bash
+python main.py --offline --enrich-strava
+```
+
+Every stub is resolved once and remembered in the cache from then on -- a successful
+fetch fills in the real data, and a confirmed 404 (e.g. an activity long since deleted on
+Strava) is recorded too, so it's never queried again either. Repeat runs only ever fetch
+newly-appeared stubs, which keeps this well within Strava's API rate limits.
+
 ## Output
 
 Each run writes:
@@ -79,6 +111,11 @@ Enabled by default. It compares overlapping activities and reports the exact rea
 - activity type match
 - start-time difference
 - duration difference
+
+It also flags a zero-duration activity (a Strava-only stub -- see "Strava enrichment"
+above -- that hasn't been resolved to real data) whose single timestamp falls inside
+another activity's time window (`point_in_time_within_activity`), even though there's no
+duration to compute a percentage from.
 
 ### under_time_limit
 

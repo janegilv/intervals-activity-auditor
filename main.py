@@ -23,6 +23,12 @@ def parse_args():
     p.add_argument("--refresh-days", type=int, help="Override incremental refresh window.")
     p.add_argument("--check", action="append", choices=CHECKS, help="Run a check even if disabled; can be repeated.")
     p.add_argument("--list-checks", action="store_true", help="List checks and exit.")
+    p.add_argument(
+        "--enrich-strava", action="store_true",
+        help="Fetch full activity data from Strava for cached Strava-only stub activities "
+             "(requires STRAVA_CLIENT_ID/SECRET/REFRESH_TOKEN in .env; see strava_auth_setup.py). "
+             "Already-enriched activities are never re-fetched, so repeat runs are rate-limit-safe.",
+    )
     return p.parse_args()
 
 def main():
@@ -54,6 +60,29 @@ def main():
             print(f"Synced {len(payloads)} activities from {oldest} to {newest}.")
         else:
             print("Offline mode: using cache only.")
+
+        if args.enrich_strava:
+            from strava_api import StravaClient
+            from strava_enrich import enrich_strava_stubs
+
+            if not (settings.strava_client_id and settings.strava_client_secret and settings.strava_refresh_token):
+                raise RuntimeError(
+                    "Missing STRAVA_CLIENT_ID/STRAVA_CLIENT_SECRET/STRAVA_REFRESH_TOKEN in .env. "
+                    "Run strava_auth_setup.py to set them up."
+                )
+            strava_client = StravaClient(
+                settings.strava_client_id, settings.strava_client_secret,
+                settings.strava_refresh_token, settings.timeout_seconds,
+            )
+            result = enrich_strava_stubs(cache, strava_client)
+            print(
+                f"Strava enrichment: {len(result['enriched'])} fetched, "
+                f"{result['already_cached']} already cached (skipped), "
+                f"{len(result['not_found'])} not found on Strava, "
+                f"{len(result['errors'])} errors."
+            )
+            for activity_id, message in result["errors"].items():
+                print(f"  {activity_id}: {message}")
 
         activities = cache.all_activities()
         enabled = args.check or [name for name, cfg in settings.checks.items() if cfg.get("enabled", False)]
