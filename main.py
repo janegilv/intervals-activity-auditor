@@ -19,7 +19,9 @@ CHECKS = {
 def parse_args():
     p = argparse.ArgumentParser(description="Audit Intervals.icu activities using pluggable checks.")
     p.add_argument("--offline", action="store_true", help="Use cached activities only.")
-    p.add_argument("--full-sync", action="store_true", help="Refresh all activities from the API.")
+    p.add_argument("--full-sync", action="store_true",
+                    help="Refresh all activities from the API. Also removes cached activities no "
+                         "longer present in Intervals.icu (deleted upstream since the last full sync).")
     p.add_argument("--refresh-days", type=int, help="Override incremental refresh window.")
     p.add_argument("--check", action="append", choices=CHECKS, help="Run a check even if disabled; can be repeated.")
     p.add_argument("--list-checks", action="store_true", help="List checks and exit.")
@@ -36,6 +38,19 @@ def parse_args():
              "stopping. Off by default -- a rate limit stops the run and picks up where it "
              "left off next time.",
     )
+    p.add_argument(
+        "--export-strava-cache", metavar="PATH",
+        help="Write every resolved Strava record (enriched or confirmed not-found) to PATH as "
+             "JSON, then exit without syncing or running checks. Run this before deleting "
+             "intervals.sqlite so --import-strava-cache can restore it afterwards instead of "
+             "re-fetching everything from Strava.",
+    )
+    p.add_argument(
+        "--import-strava-cache", metavar="PATH",
+        help="Re-merge a JSON file created by --export-strava-cache into the current cache "
+             "(typically a freshly recreated intervals.sqlite), then exit without syncing or "
+             "running checks.",
+    )
     return p.parse_args()
 
 def main():
@@ -51,6 +66,26 @@ def main():
             print(f"  {cls.description}\n")
         return
 
+    if args.export_strava_cache:
+        from strava_enrich import export_strava_cache
+        cache = ActivityCache(settings.cache_db)
+        try:
+            count = export_strava_cache(cache, args.export_strava_cache)
+            print(f"Exported {count} resolved Strava record(s) to {args.export_strava_cache}")
+        finally:
+            cache.close()
+        return
+
+    if args.import_strava_cache:
+        from strava_enrich import import_strava_cache
+        cache = ActivityCache(settings.cache_db)
+        try:
+            count = import_strava_cache(cache, args.import_strava_cache)
+            print(f"Imported {count} Strava record(s) from {args.import_strava_cache} into {settings.cache_db}")
+        finally:
+            cache.close()
+        return
+
     cache = ActivityCache(settings.cache_db)
     try:
         if not args.offline:
@@ -63,6 +98,15 @@ def main():
             client = IntervalsClient(settings.api_key, settings.athlete_id, settings.timeout_seconds)
             payloads = client.list_activities(oldest, newest)
             cache.upsert_many(payloads)
+            if args.full_sync:
+                # A full sync's response is the complete activity history, so
+                # anything cached that isn't in it was deleted upstream.
+                # Never do this for an incremental sync -- that only covers a
+                # recent window and would wrongly prune everything older.
+                current_ids = {str(p.get("id")) for p in payloads}
+                removed = cache.prune_missing(current_ids)
+                if removed:
+                    print(f"Removed {removed} cached activity(ies) no longer present in Intervals.icu.")
             cache.set_state("last_successful_sync", datetime.now(timezone.utc).isoformat())
             print(f"Synced {len(payloads)} activities from {oldest} to {newest}.")
         else:

@@ -52,6 +52,10 @@ Later, a normal run refreshes only the configured recent window:
 python main.py
 ```
 
+`--full-sync` also removes any cached activity no longer present in Intervals.icu (i.e.
+deleted since your last full sync) -- see "Deleting activities" below before you next
+reach for deleting `intervals.sqlite` by hand.
+
 Analyse the local cache without contacting the API:
 
 ```bash
@@ -89,6 +93,27 @@ Every stub is resolved once and remembered in the cache from then on -- a succes
 fetch fills in the real data, and a confirmed 404 (e.g. an activity long since deleted on
 Strava) is recorded too, so it's never queried again either. Repeat runs only ever fetch
 newly-appeared stubs, which keeps this well within Strava's API rate limits.
+
+If Strava rate limits you mid-run, it stops there by default -- nothing already fetched is
+lost, and the remaining stubs are simply picked up next time. Add `--strava-auto-retry` to
+instead wait out Strava's `Retry-After` (repeating for as long as it keeps happening) and
+finish the run in one go, unattended.
+
+## Deleting activities / rebuilding the cache
+
+Deleting `intervals.sqlite` and resyncing has been the way to make the local cache
+reflect activities deleted in Intervals.icu, since `upsert_many` only ever inserts or
+updates and never removes a row on its own. Two ways to avoid losing Strava enrichment
+work when you do this:
+
+- **Preferred:** just run `python main.py --full-sync`. It now prunes any cached activity
+  missing from that full-history response, so deletions are picked up without ever
+  wiping the file -- Strava enrichment is untouched.
+- **If you do delete the file anyway** (a corrupted cache, wanting a truly clean slate):
+  run `python main.py --export-strava-cache strava_backup.json` first, delete
+  `intervals.sqlite`, do your normal full resync, then
+  `python main.py --import-strava-cache strava_backup.json` to restore the previously
+  resolved Strava records with no re-fetching.
 
 ## Output
 

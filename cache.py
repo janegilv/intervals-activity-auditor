@@ -65,6 +65,30 @@ class ActivityCache:
         """, rows)
         self.conn.commit()
 
+    def prune_missing(self, current_ids) -> int:
+        """Delete cached rows whose id is not in current_ids. Only call this
+        with the id set from a --full-sync response (the complete activity
+        history from Intervals.icu) -- there, "missing from the fresh
+        response" reliably means "deleted upstream". Calling this with an
+        incremental/windowed fetch's ids would wrongly delete every activity
+        outside that window, so callers must not do that.
+
+        Uses a temp table rather than a SQL "NOT IN (...)" list so this
+        works regardless of how many ids there are (sqlite has a parameter
+        count limit a plain IN-list would hit on a full history).
+
+        Returns the number of rows deleted.
+        """
+        self.conn.execute("CREATE TEMP TABLE IF NOT EXISTS _sync_ids (id TEXT PRIMARY KEY)")
+        self.conn.execute("DELETE FROM _sync_ids")
+        self.conn.executemany(
+            "INSERT OR IGNORE INTO _sync_ids (id) VALUES (?)",
+            [(str(i),) for i in current_ids],
+        )
+        cur = self.conn.execute("DELETE FROM activities WHERE id NOT IN (SELECT id FROM _sync_ids)")
+        self.conn.commit()
+        return cur.rowcount
+
     def all_activities(self):
         rows = self.conn.execute("SELECT * FROM activities ORDER BY start_date, start_date_local").fetchall()
         return [
