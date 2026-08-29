@@ -1,10 +1,11 @@
 # What I ended up doing
 
 - Remove all garmin connect and intervals.icu that are very short and not present in strava.
+- If doing changes to garmin activities, re-export as gpx and add to intervals. (original is not edited) (should have probably exported, trimmed in external app and reimported)
 - Duplicate/overlapping activities in intervals.icu:
-  - Trimmed/cropped activities: Delete the garmin activities and keep the strava one.
-  - Split activities: Delete the garmin activities, keep the strava ones.
-  - Merged activities: Delete the garmin activities, keep the strava ones.
+  - Trimmed/cropped activities: Trim garmin activities and re-export to intervals via gpx. Keeps ability to export? They are merged. Better would maybe be to export and trim in external app, then fit file original in garmin would be fine for export all history.
+  #- Split activities: Delete the garmin activities, keep the strava ones.
+  - Merged activities: Merge the garmin activities also. keep the strava ones.
   - 
 ## More detailed information
  - Downloading trimmed activities from garmin seems to download the original activity and not the trimmed one. I have only tried exporting original from garmin, not the full email download.
