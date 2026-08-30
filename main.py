@@ -9,6 +9,9 @@ from checks.duplicate_overlap import DuplicateOverlapCheck
 from checks.under_time_limit import UnderTimeLimitCheck
 from checks.over_time_limit import OverTimeLimitCheck
 from checks.garmin_link_only import GarminLinkOnlyCheck
+from checks.implausible_pace import ImplausiblePaceCheck
+from checks.missing_distance import MissingDistanceCheck
+from checks.moving_elapsed_gap import MovingElapsedGapCheck
 from reporting import json_report, csv_report, markdown_report
 
 CHECKS = {
@@ -16,6 +19,9 @@ CHECKS = {
     "under_time_limit": UnderTimeLimitCheck,
     "over_time_limit": OverTimeLimitCheck,
     "garmin_link_only": GarminLinkOnlyCheck,
+    "implausible_pace": ImplausiblePaceCheck,
+    "missing_distance": MissingDistanceCheck,
+    "moving_elapsed_gap": MovingElapsedGapCheck,
 }
 
 def parse_args():

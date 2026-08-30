@@ -21,3 +21,42 @@ enabled = true
 # 86400s = 24h. Flags activities longer than this as likely bad data
 # (e.g. a forgotten-to-stop tracker) rather than a real workout.
 maximum_duration_seconds = 86400
+
+[implausible_pace]
+enabled = true
+# Each type's bound is widened by this many km/h before anything is flagged
+# -- a reading a couple of km/h past the line is normal variation, not bad
+# data, so only a genuinely implausible reading (well past the widened
+# range) gets reported.
+margin_kmh = 2.0
+# Average-speed bounds (km/h) per activity type -- a value outside its range
+# (plus margin_kmh above) usually means a GPS glitch, a wrong activity type,
+# or bad distance/duration data. Built-in defaults (checks/implausible_pace.py)
+# cover the types seen in this account already; only list a type below to
+# override its default. Types with no meaningful "pace" (WeightTraining,
+# Workout, Transition, Elliptical, ...) are skipped automatically -- no need
+# to list them.
+[implausible_pace.speed_kmh_by_type]
+# Run = [3, 30]
+
+[missing_distance]
+enabled = true
+minimum_moving_seconds = 60
+# Outdoor types expected to carry GPS distance. Indoor trainer/treadmill
+# sessions of these same types (Activity.is_trainer / .is_indoor) are always
+# excluded regardless of this list -- see checks/missing_distance.py.
+outdoor_types = ["Ride", "GravelRide", "MountainBikeRide", "Hike", "Run", "TrailRun", "Walk", "NordicSki", "AlpineSki", "OpenWaterSwim", "IceSkate"]
+
+[moving_elapsed_gap]
+# Disabled -- the stopped-time-gap signal (large elapsed/moving divergence)
+# turned out to be mostly noise in practice (long hike/ski breaks etc.), not
+# a useful indicator of bad data. The negative-gap case it also covers
+# (moving_time > elapsed_time, which is impossible) is a genuine data
+# integrity signal though, so the check itself is left in place -- run it
+# on demand with `--check moving_elapsed_gap` rather than every regular run.
+enabled = false
+minimum_gap_percent = 30.0
+minimum_gap_seconds = 600
+# A negative gap (moving_time > elapsed_time) is impossible and always
+# flagged once it exceeds this tolerance; smaller ones are rounding noise.
+negative_gap_tolerance_seconds = 5

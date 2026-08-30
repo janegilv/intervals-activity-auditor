@@ -172,6 +172,43 @@ python main.py --offline --check under_time_limit
 
 Enabled, but still under testing and development. API metadata can differ, so inspect cached `raw_json` and adapt `_is_garmin_only()` / `_strava_id_none()` in `checks/garmin_link_only.py` to match your data if the heuristic misfires.
 
+### implausible_pace
+
+Enabled. Flags an activity whose average speed (`distance / moving_time`) falls outside
+a plausible range for its activity type -- usually a GPS glitch, a wrong activity type,
+or bad distance/duration data. Built-in per-type bounds live in
+`checks/implausible_pace.py` (`DEFAULT_SPEED_BOUNDS_KMH`); override or add a type via
+`[implausible_pace.speed_kmh_by_type]` in `checks.toml`. Types with no meaningful pace
+(`WeightTraining`, `Workout`, `Transition`, `Elliptical`, ...) are skipped automatically.
+
+Each bound is widened by `margin_kmh` (2.0 km/h by default) before anything is flagged,
+so a reading only a km/h or two past the line -- ordinary variation, not bad data -- is
+left alone. Lower `margin_kmh` in `checks.toml` for tighter sensitivity, or raise it if
+even the widened default still feels too eager.
+
+### missing_distance
+
+Enabled. Flags an outdoor-type activity (`Ride`, `Run`, `Hike`, ... -- see
+`outdoor_types` in `checks.toml`) with no recorded GPS distance, once it's run long
+enough (`minimum_moving_seconds`) that a missing distance is unlikely to be
+coincidental. Indoor trainer/treadmill sessions are always excluded regardless of type
+(`Activity.is_trainer` / `.is_indoor`) -- an indoor "Ride" legitimately has no GPS track,
+that's not a data problem.
+
+### moving_elapsed_gap
+
+Disabled by default -- the "large elapsed/moving gap means unpaused stopped time" signal
+turned out to be mostly noise in practice (long hike/ski breaks and similar produce it
+legitimately), not a reliable indicator of bad data. It also covers a second, more
+useful case: a *negative* gap (moving time exceeding elapsed time, which shouldn't be
+possible) is always flagged at `medium` severity once it exceeds
+`negative_gap_tolerance_seconds`. The check is left in place for that case and for
+occasional manual use:
+
+```bash
+python main.py --offline --check moving_elapsed_gap
+```
+
 ## Add a new check
 
 1. Create a class in `checks/`.
