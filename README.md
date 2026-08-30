@@ -1,4 +1,6 @@
 Vibecoded application to assist me in cleaning up intervals.icu, garmin and strava.
+Fetches intervals.icu activities, enriches some activities from strava, runs through checks for these and prints the failed checks.
+Failed checks must manually be fixed, the script is "read-only"
 
 # What I ended up doing to fix the failed checks.
 
