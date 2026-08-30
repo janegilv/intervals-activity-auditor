@@ -1,3 +1,4 @@
+import derivation
 from .base import ActivityCheck
 
 # Sane default bounds (km/h) per Intervals.icu activity type, calibrated
@@ -50,7 +51,7 @@ class ImplausiblePaceCheck(ActivityCheck):
             type_bounds = bounds.get(a.activity_type)
             if not type_bounds:
                 continue
-            speed = a.average_speed_kmh
+            speed = derivation.average_speed_kmh(a)
             if speed is None:
                 continue
 
