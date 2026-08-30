@@ -153,7 +153,11 @@ Each run writes:
 
 ## Checks
 
-Configuration is in `checks.toml`.
+Configuration is in `checks.toml`. Personal, account-specific overrides (e.g.
+excluding one of your own activities from a check) go in an untracked
+`checks.local.toml` instead -- copy `checks.local.toml.example` to get started.
+Each section there is merged on top of the matching section in `checks.toml`,
+one level deep, so it never needs to touch the shared, tracked config.
 
 ### duplicate_overlap
 

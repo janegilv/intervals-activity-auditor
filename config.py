@@ -27,6 +27,20 @@ def load_settings():
         )
     with open("checks.toml", "rb") as f:
         checks = tomllib.load(f)
+
+    # Personal, account-specific overrides (e.g. excluding one of your own
+    # activities from a check) live in checks.local.toml instead of the
+    # tracked checks.toml -- see checks.local.toml.example. Optional: most
+    # setups won't have one. Each section here is merged on top of the
+    # matching section in checks.toml, one level deep -- a key you don't
+    # set locally still falls back to checks.toml's value.
+    local_path = Path("checks.local.toml")
+    if local_path.exists():
+        with open(local_path, "rb") as f:
+            local_checks = tomllib.load(f)
+        for name, overrides in local_checks.items():
+            checks.setdefault(name, {}).update(overrides)
+
     return Settings(
         api_key=api_key,
         athlete_id=athlete_id,

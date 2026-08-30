@@ -1,0 +1,13 @@
+# Personal, account-specific check overrides.
+#
+# Copy this file to checks.local.toml (gitignored -- never committed) and
+# fill in whatever's specific to your own account. config.py merges each
+# section here on top of the matching section in checks.toml, one level
+# deep -- keys you don't set here fall back to checks.toml's values.
+#
+# Typical use: excluding a specific activity of your own from a check
+# (e.g. one you use for testing/dev runs) without baking your account's
+# activity IDs into the tracked, shareable checks.toml.
+
+[duplicate_overlap]
+# ignore_activities = ["REDACTED-ACTIVITY-ID"]

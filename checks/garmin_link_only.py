@@ -45,6 +45,3 @@ class GarminLinkOnlyCheck(ActivityCheck):
                     "info"
                 ))
         return findings
-
-#source: "GARMIN_CONNECT",
-#strava_id: "REDACTED-ACTIVITY-ID",

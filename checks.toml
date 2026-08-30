@@ -4,9 +4,8 @@ minimum_overlap_percent = 10.0
 maximum_start_difference_seconds = 10000
 maximum_duration_difference_percent = 100.0
 require_same_type = false
-# Personal exclusion: keeps this activity out of testing/dev runs against my own account.
-# Not meant to carry over if this config is reused for a different athlete.
-ignore_activities = ["REDACTED-ACTIVITY-ID"]
+# Personal, account-specific exclusions (e.g. ignore_activities) live in the
+# untracked checks.local.toml instead of here -- see checks.local.toml.example.
 
 [under_time_limit]
 enabled = true
