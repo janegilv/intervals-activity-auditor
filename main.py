@@ -1,10 +1,11 @@
 import argparse
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from pathlib import Path
 
 from config import load_settings
 from intervals_api import IntervalsClient
 from cache import ActivityCache
+from sync import sync_activities
 from checks.duplicate_overlap import DuplicateOverlapCheck
 from checks.under_time_limit import UnderTimeLimitCheck
 from checks.over_time_limit import OverTimeLimitCheck
@@ -113,43 +114,14 @@ def main():
                 oldest = date.today() - timedelta(days=days)
             newest = date.today() + timedelta(days=1)
             client = IntervalsClient(settings.api_key, settings.athlete_id, settings.timeout_seconds)
-            payloads = client.list_activities(oldest, newest)
 
-            # Intervals.icu always returns the same permanent placeholder for a
-            # Strava-only-linked activity it can't fetch full data for -- so a
-            # sync response that is STILL that placeholder for an id we've
-            # already resolved via --enrich-strava is never an improvement,
-            # only a downgrade. But "already resolved" doesn't mean every
-            # future sync for that id should be ignored: Intervals.icu can
-            # start sending real data of its own later (e.g. the activity
-            # gets linked to a matching Garmin file), and that update should
-            # win over our Strava-fetched copy. So only skip the specific
-            # no-op case -- already resolved AND still just the placeholder --
-            # not every sync touching that id. Keep the full id set for
-            # prune_missing below regardless (a resolved activity is still a
-            # real, currently-existing one even when we skip its upsert).
-            from strava_enrich import resolved_strava_ids, is_unresolved_stub_payload
-            already_resolved = resolved_strava_ids(cache)
-            to_upsert = [
-                p for p in payloads
-                if str(p.get("id")) not in already_resolved or not is_unresolved_stub_payload(p)
-            ]
-            preserved = len(payloads) - len(to_upsert)
-            cache.upsert_many(to_upsert)
-            if preserved:
-                print(f"Preserved {preserved} already Strava-enriched activity(ies) from being overwritten by this sync.")
+            sync_result = sync_activities(cache, client, oldest=oldest, newest=newest, full=args.full_sync)
 
-            if args.full_sync:
-                # A full sync's response is the complete activity history, so
-                # anything cached that isn't in it was deleted upstream.
-                # Never do this for an incremental sync -- that only covers a
-                # recent window and would wrongly prune everything older.
-                current_ids = {str(p.get("id")) for p in payloads}
-                removed = cache.prune_missing(current_ids)
-                if removed:
-                    print(f"Removed {removed} cached activity(ies) no longer present in Intervals.icu.")
-            cache.set_state("last_successful_sync", datetime.now(timezone.utc).isoformat())
-            print(f"Synced {len(payloads)} activities from {oldest} to {newest}.")
+            if sync_result.preserved_count:
+                print(f"Preserved {sync_result.preserved_count} already Strava-enriched activity(ies) from being overwritten by this sync.")
+            if sync_result.removed_count:
+                print(f"Removed {sync_result.removed_count} cached activity(ies) no longer present in Intervals.icu.")
+            print(f"Synced {sync_result.synced_count} activities from {sync_result.oldest} to {sync_result.newest}.")
         else:
             print("Offline mode: using cache only.")
 
