@@ -26,6 +26,44 @@ def _is_unenriched_stub(activity) -> bool:
     return activity.raw.get("source") == STUB_SOURCE and STUB_MARKER in activity.raw
 
 
+def resolved_strava_ids(cache) -> set:
+    """IDs of Strava-sourced activities already resolved (enriched, or
+    confirmed not-found) by a previous --enrich-strava run.
+
+    Intervals.icu's API always returns the same minimal placeholder for a
+    Strava-only-linked activity it can't fetch full data for -- that's
+    permanent, not "not yet available". So a sync response that is still
+    that exact placeholder is never an improvement over what we already
+    resolved, and handing it to cache.upsert_many would silently overwrite
+    good data with it. main.py's sync step uses this together with
+    is_unresolved_stub_payload() below to filter out only that specific
+    no-op case -- not every future sync for this id (see that function's
+    docstring for why the distinction matters)."""
+    return {
+        a.id for a in cache.all_activities()
+        if a.raw.get("source") == STUB_SOURCE and "_strava_lookup" in a.raw
+    }
+
+
+def is_unresolved_stub_payload(payload: dict) -> bool:
+    """True if a sync payload is still Intervals.icu's permanent placeholder
+    shape (source == STRAVA, carries STUB_MARKER) for an activity it can't
+    fetch full data for itself.
+
+    This is deliberately narrower than "this id was already resolved via
+    Strava". An activity can start as a Strava-only stub, get resolved by
+    --enrich-strava, and later gain real data on Intervals.icu's own side --
+    e.g. it gets linked to a matching Garmin file, or Intervals.icu's
+    integration simply catches up. When that happens the sync payload for
+    that id is no longer this placeholder shape, and it should be let
+    through to overwrite our Strava-fetched copy: Intervals.icu having its
+    own real data for the activity is strictly better than what we
+    backfilled from Strava. Only an id that is both already resolved AND
+    still sending this exact placeholder should be skipped -- that
+    combination is the only one that can't possibly be an improvement."""
+    return payload.get("source") == STUB_SOURCE and STUB_MARKER in payload
+
+
 def _fetch_with_optional_retry(client, activity_id, auto_retry_rate_limit, on_wait=None):
     """Calls client.get_activity(activity_id). On a 429, either waits out
     Strava's own Retry-After (or DEFAULT_RATE_LIMIT_WAIT_SECONDS if Strava

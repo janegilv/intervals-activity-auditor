@@ -117,7 +117,14 @@ work when you do this:
 
 - **Preferred:** just run `python main.py --full-sync`. It now prunes any cached activity
   missing from that full-history response, so deletions are picked up without ever
-  wiping the file -- Strava enrichment is untouched.
+  wiping the file -- Strava enrichment is untouched. Every sync (not just `--full-sync`)
+  also protects already-resolved Strava activities from being downgraded: Intervals.icu
+  always returns the exact same permanent placeholder for a Strava-only-linked activity
+  it can't fetch itself, so once we've backfilled one from Strava, a sync response that's
+  still just that placeholder is skipped rather than overwriting the real data. This
+  doesn't block genuine updates, though -- if Intervals.icu later has real data of its
+  own for that activity (e.g. it gets linked to a matching Garmin file), that update is
+  recognized as more than just the placeholder and is applied normally.
 - **If you do delete the file anyway** (a corrupted cache, wanting a truly clean slate):
   run `python main.py --export-strava-cache strava_backup.json` first, delete
   `intervals.sqlite`, do your normal full resync, then
