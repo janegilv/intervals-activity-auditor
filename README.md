@@ -1,15 +1,25 @@
-# What I ended up doing
+Vibecoded application to assist me in cleaning up intervals.icu, garmin and strava.
+
+# What I ended up doing to fix the failed checks.
 
 - Remove all garmin connect and intervals.icu that are very short and not present in strava.
-- If doing changes to garmin activities, re-export as gpx and add to intervals. (original is not edited) (should have probably exported, trimmed in external app and reimported)
+- If doing changes to garmin activities, re-export original and add back to strava. Don't remember if you have to manually add to intervals. If cropping/merging/splitting, this should be done for all activities to keep garmin and strava equal.
 - Duplicate/overlapping activities in intervals.icu:
   - Trimmed/cropped activities: Trim garmin activities and re-export to intervals via gpx. Keeps ability to export? They are merged. Better would maybe be to export and trim in external app, then fit file original in garmin would be fine for export all history.
   #- Split activities: Delete the garmin activities, keep the strava ones.
   - Merged activities: Merge the garmin activities also. keep the strava ones.
-  - 
+
 ## More detailed information
  - Downloading trimmed activities from garmin seems to download the original activity and not the trimmed one. I have only tried exporting original from garmin, not the full email download.
+ - Last workaround was to download original from garmin, edit it and reupload. Also reupload same file to strava, more work but seems bulletproof.
 
+# Tools
+( In order of preference? )
+- https://fitfileeditor.com/ (Used for cropping)
+- https://www.fitfiletools.com/
+  - Don't really like the section remover.
+- https://www.fitfileviewer.com/
+ 
 # Intervals.icu Activity Auditor
 
 A read-only Python CLI for auditing Intervals.icu activities.
