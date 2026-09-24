@@ -9,7 +9,9 @@ Failed checks must manually be fixed, the script is "read-only"
   - Export original from garmin
   - Make necessary changes
   - Delete old garmin/strava activity
-  - Add edit FIT file to garmin/strave. Try garmin first and see if it updates other
+  - Add edit FIT file to garmin/strava.
+    - Garmin does not send manually updated activities to strava
+    - Intervals gets the activity from garmin (maybe it fetches itself?) 
   - Manual add of garmin to intervals.icu might be necessary.
 - Duplicate/overlapping activities in intervals.icu:
 
