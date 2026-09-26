@@ -34,7 +34,7 @@ def next_steps(views: list[ActivityView]) -> str:
         return ""
     p, example = cli_prefix(), views[0]
     aid, check = example.activity_id, example.issues[0].check
-    lines = ["To look at an activity or acknowledge its issues, use the id shown under it, e.g.:"]
+    lines = ['To look at an activity or acknowledge its issues, copy the id after "activity:", e.g.:']
     lines += _commands([
         (f"{p} show {aid}", "details, history and links"),
         (f'{p} ack {aid} -n "why it\'s fine"', "acknowledge all its open issues"),
@@ -58,7 +58,7 @@ def ack_line(ack: Acknowledgment) -> str:
 def activity_views(views: list[ActivityView]) -> str:
     blocks = []
     for view in views:
-        lines = [activity_heading(view.activity, view.activity_id), f"  id {view.activity_id}  {view.url}"]
+        lines = [activity_heading(view.activity, view.activity_id), f"  activity: {view.activity_id}  {view.url}"]
         for issue in view.issues:
             lines.append(f"  {issue_line(issue)}")
             if issue.ack is not None:
@@ -81,7 +81,7 @@ def activity_detail(detail: ActivityDetail) -> str:
     a = detail.activity
     snapshot = next((ack.snapshot.get(detail.activity_id) for ack in detail.acks
                      if detail.activity_id in ack.snapshot), None)
-    lines = [activity_heading(a, detail.activity_id, snapshot), f"{detail.activity_id}  {activity_url(detail.activity_id)}"]
+    lines = [activity_heading(a, detail.activity_id, snapshot), f"activity: {detail.activity_id}  {activity_url(detail.activity_id)}"]
     if a is not None:
         raw = a.raw
         lines.append(f"Source {raw.get('source') or '-'} · Strava id {raw.get('strava_id') or '-'} · "

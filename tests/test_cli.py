@@ -81,7 +81,7 @@ class CliTest(unittest.TestCase):
         code, out, _ = self.cli("--offline", "-q")
         self.assertEqual(code, 0)
         self.assertIn("3 open issues on 3 activities", out)
-        self.assertIn("  id i3  https://intervals.icu/activities/i3", out)
+        self.assertIn("  activity: i3  https://intervals.icu/activities/i3", out)
         self.assertIn('python main.py ack i3 -n "why it\'s fine"', out)
         self.assertTrue((self.root / "output" / "report.md").exists())
         self.assertTrue(self.settings.log_file.exists())
@@ -98,7 +98,8 @@ class CliTest(unittest.TestCase):
 
         code, out, _ = self.cli("show", "i3")
         self.assertIn('python main.py ack i3 -n "why it\'s fine"', out)
-        code, out, _ = self.cli("show", "i2")
+        code, out, _ = self.cli("show", "2")  # the "i" prefix is optional
+        self.assertIn("activity: i2", out)
         self.assertIn("ACKNOWLEDGED", out)
         self.assertIn("python main.py unack i2", out)
         self.assertIn("note: both real", out)

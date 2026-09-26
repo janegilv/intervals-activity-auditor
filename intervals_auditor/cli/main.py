@@ -78,8 +78,9 @@ examples:
   main.py ack i123456789 --check garmin_link_only -n "no Strava copy on purpose"
   main.py ack i123456789 --only-this -n "..."   leave the other half of a duplicate pair alone
 
-The activity id is shown under each activity in the `run` and `issues`
-output ("id i123456789"; Strava-only activities have a plain number).
+The activity id is shown after "activity:" in the `run` and `issues`
+output. The "i" prefix Intervals.icu uses is optional: `ack 123456789`
+finds i123456789. Strava-only activities have a plain number.
 Acknowledged issues stay hidden until the activity changes; list them with
 `issues --all` or `acks`, and undo with `unack`.""")
     p.add_argument("activity_id")
@@ -186,16 +187,21 @@ def cmd_issues(app: App, args) -> int:
     return 0
 
 
+def resolve_activity(app: App, ref: str) -> str:
+    activity_id = app.queries.resolve_activity_id(ref)
+    if activity_id is None:
+        raise NotFoundError(f"No activity {ref!r} in the database.")
+    return activity_id
+
+
 def cmd_show(app: App, args) -> int:
-    detail = app.queries.activity_detail(args.activity_id)
-    if detail is None:
-        print(f"No activity {args.activity_id!r} in the database.", file=sys.stderr)
-        return 1
+    detail = app.queries.activity_detail(resolve_activity(app, args.activity_id))
     print(render.activity_detail(detail))
     return 0
 
 
 def cmd_ack(app: App, args) -> int:
+    args.activity_id = resolve_activity(app, args.activity_id)
     created = app.ack_service.acknowledge(args.activity_id, check=args.check, note=args.note,
                                           include_related=not args.only_this)
     if not created:
@@ -210,6 +216,7 @@ def cmd_ack(app: App, args) -> int:
 
 
 def cmd_unack(app: App, args) -> int:
+    args.activity_id = resolve_activity(app, args.activity_id)
     revoked = app.ack_service.unacknowledge(args.activity_id, check=args.check, include_related=not args.only_this)
     if not revoked:
         print(f"No active acknowledgments on {args.activity_id}.")
@@ -220,7 +227,8 @@ def cmd_unack(app: App, args) -> int:
 
 
 def cmd_acks(app: App, args) -> int:
-    acks = app.ack_service.list(include_revoked=args.all, activity_id=args.activity)
+    activity_id = resolve_activity(app, args.activity) if args.activity else None
+    acks = app.ack_service.list(include_revoked=args.all, activity_id=activity_id)
     if acks:
         print(render.acks_list(acks))
         print()

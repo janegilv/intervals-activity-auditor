@@ -61,6 +61,24 @@ class QueryService:
     def report_views(self) -> list[ActivityView]:
         return self.activity_views(states=(OPEN, ACKNOWLEDGED))
 
+    def _known_activity(self, activity_id: str) -> bool:
+        return bool(self.activities.get(activity_id)
+                    or self.issues.list(activity_id=activity_id)
+                    or self.acks.list(include_revoked=True, activity_id=activity_id))
+
+    def resolve_activity_id(self, ref: str) -> str | None:
+        """The stored activity id for what was typed: exactly as stored, or
+        without Intervals.icu's "i" prefix (179138245 finds i179138245).
+        Activities that have since been deleted are found through their
+        issues/acknowledgments."""
+        ref = ref.strip()
+        candidates = [ref]
+        if ref.isdigit():
+            candidates.append(f"i{ref}")
+        elif ref[:1] == "I" and ref[1:].isdigit():
+            candidates.append(f"i{ref[1:]}")
+        return next((c for c in candidates if self._known_activity(c)), None)
+
     def activity_detail(self, activity_id: str) -> ActivityDetail | None:
         activity = self.activities.get(activity_id)
         issues = self._issue_views(activity_id=activity_id)
