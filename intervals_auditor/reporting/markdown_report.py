@@ -16,7 +16,7 @@ def _section(lines, title, views, state):
         lines += [f"### {activity_heading(view.activity, view.activity_id)}", "",
                   f"`{view.activity_id}` · [Open in Intervals.icu]({view.url})", ""]
         for issue in issues:
-            lines.append(f"- **{issue.severity.upper()}** `{issue.check}` — {issue.summary}")
+            lines.append(f"- issue {issue.number}: **{issue.severity.upper()}** `{issue.check}` — {issue.summary}")
             for detail in format_details(issue.details):
                 lines.append(f"  - {detail}")
             for rid, url in issue.related_urls:

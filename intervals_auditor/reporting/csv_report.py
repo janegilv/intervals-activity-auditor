@@ -6,7 +6,7 @@ from intervals_auditor.views import ActivityView
 
 FIELDS = [
     "activity_id", "url", "start_local", "type", "name", "duration_seconds", "distance",
-    "check", "severity", "state", "summary", "related_activity_ids", "details",
+    "issue_number", "check", "severity", "state", "summary", "related_activity_ids", "details",
     "first_seen_at", "ack_note", "ack_created_at",
 ]
 
@@ -27,6 +27,7 @@ def write(views: list[ActivityView], path: Path, generated_at: str):
                     "name": a.name if a else "",
                     "duration_seconds": a.duration_seconds if a else "",
                     "distance": a.distance if a else "",
+                    "issue_number": i.number,
                     "check": i.check,
                     "severity": i.severity,
                     "state": i.state,

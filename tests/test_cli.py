@@ -60,9 +60,9 @@ class CliTest(unittest.TestCase):
         with App(self.settings) as app:
             with app.db.transaction():
                 app.activities.upsert_many([
-                    payload("i1", start="2026-09-20T07:00:00"),
-                    payload("i2", start="2026-09-20T07:00:30"),
-                    payload("i3", start="2026-09-21T07:00:00", seconds=30),
+                    payload("i101", start="2026-09-20T07:00:00"),
+                    payload("i102", start="2026-09-20T07:00:30"),
+                    payload("i103", start="2026-09-21T07:00:00", seconds=30),
                 ], "2026-09-20T10:00:00+00:00")
 
     def tearDown(self):
@@ -81,35 +81,50 @@ class CliTest(unittest.TestCase):
         code, out, _ = self.cli("--offline", "-q")
         self.assertEqual(code, 0)
         self.assertIn("3 open issues on 3 activities", out)
-        self.assertIn("  activity: i3  https://intervals.icu/activities/i3", out)
-        self.assertIn('python main.py ack i3 -n "why it\'s fine"', out)
+        self.assertIn("  activity: i103  https://intervals.icu/activities/i103", out)
+        # Issues are numbered in the order found: 1/2 the i101/i102 duplicate pair, 3 the short i103.
+        self.assertIn("  issue: 3  [INFO] under_time_limit", out)
+        self.assertIn('python main.py ack 3 -n "why it\'s fine"', out)
+        self.assertIn('python main.py ack 3 2 -n "..."', out)
         self.assertTrue((self.root / "output" / "report.md").exists())
         self.assertTrue(self.settings.log_file.exists())
 
-        code, out, _ = self.cli("ack", "i1", "-n", "both real")
+        code, out, _ = self.cli("ack", "i101", "-n", "both real")
         self.assertEqual(code, 0)
         self.assertIn("Acknowledged 2 issue(s)", out)
-        self.assertIn("https://intervals.icu/activities/i1", out)
+        self.assertIn("https://intervals.icu/activities/i101", out)
 
         code, out, _ = self.cli("issues")
         self.assertIn("1 open issue on 1 activity (2 acknowledged not shown", out)
         code, out, _ = self.cli("issues", "--all")
-        self.assertIn("acknowledged #", out)
+        self.assertIn("acknowledged ", out)
 
-        code, out, _ = self.cli("show", "i3")
-        self.assertIn('python main.py ack i3 -n "why it\'s fine"', out)
-        code, out, _ = self.cli("show", "2")  # the "i" prefix is optional
-        self.assertIn("activity: i2", out)
+        code, out, _ = self.cli("show", "i103")
+        self.assertIn('python main.py ack 3 -n "why it\'s fine"', out)
+        code, out, _ = self.cli("show", "179")  # no such activity or issue
+        self.assertEqual(code, 1)
+        code, out, _ = self.cli("show", "3")  # an issue number shows its activity
+        self.assertIn("activity: i103", out)
+        code, out, _ = self.cli("show", "102")  # the "i" prefix is optional
+        self.assertIn("activity: i102", out)
+        code, out, _ = self.cli("show", "i102")
         self.assertIn("ACKNOWLEDGED", out)
-        self.assertIn("python main.py unack i2", out)
+        self.assertIn("python main.py unack 2", out)
         self.assertIn("note: both real", out)
+
+        code, out, _ = self.cli("ack", "3", "-n", "false start")
+        self.assertIn("Acknowledged 1 issue(s)", out)
+        self.assertIn("issue: 3", out)
+        self.assertIn("Undo with: python main.py unack 3", out)
+        code, out, _ = self.cli("unack", "#3")
+        self.assertIn("Revoked 1 acknowledgment(s)", out)
 
         code, out, _ = self.cli("acks")
         self.assertIn("2 acknowledgment(s)", out)
-        code, out, _ = self.cli("unack", "i2", "--only-this")
+        code, out, _ = self.cli("unack", "i102", "--only-this")
         self.assertIn("Revoked 1 acknowledgment(s)", out)
         code, out, _ = self.cli("acks", "--all")
-        self.assertIn("revoked", out)
+        self.assertIn("REVOKED", out)
 
         code, out, _ = self.cli("status")
         self.assertIn("Activities      3", out)
@@ -121,9 +136,9 @@ class CliTest(unittest.TestCase):
     def test_errors(self):
         code, _, err = self.cli("show", "nope")
         self.assertEqual(code, 1)
-        code, _, err = self.cli("ack", "nope")
+        code, _, err = self.cli("ack", "nope", "99")
         self.assertEqual(code, 1)
-        self.assertIn("No activity 'nope'", err)
+        self.assertIn("No issue number or activity: nope, 99", err)
         code, _, err = self.cli("run", "-q")  # no credentials
         self.assertEqual(code, 2)
         self.assertIn("INTERVALS_API_KEY", err)

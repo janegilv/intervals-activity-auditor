@@ -27,6 +27,7 @@ class IssueView:
     notified_at: str | None = None
     reopen_reason: str | None = None
     ack: Acknowledgment | None = None
+    number: int | None = None
 
     @classmethod
     def from_issue(cls, issue: Issue) -> IssueView:
@@ -44,7 +45,8 @@ class IssueView:
         return cls(record.key, record.activity_id, record.check, record.severity, record.summary,
                    record.related_activity_ids, record.details, state,
                    first_seen_at=record.first_seen_at, resolved_at=record.resolved_at,
-                   notified_at=record.notified_at, reopen_reason=record.reopen_reason, ack=ack)
+                   notified_at=record.notified_at, reopen_reason=record.reopen_reason, ack=ack,
+                   number=record.number)
 
     @property
     def related_urls(self) -> list[tuple[str, str]]:
@@ -70,7 +72,8 @@ class ActivityView:
 
 
 def _issue_sort_key(issue: IssueView):
-    return (SEVERITY_RANK.get(issue.severity, 99), issue.check, issue.key)
+    number = issue.number if issue.number is not None else float("inf")
+    return (SEVERITY_RANK.get(issue.severity, 99), issue.check, number, issue.key)
 
 
 def group_by_activity(issues: list[IssueView], activities: dict[str, Activity]) -> list[ActivityView]:

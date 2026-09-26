@@ -144,7 +144,8 @@ class AuditService:
             return f"{record.activity_id} {where} [{record.severity}] {record.check}: {record.summary}"
 
         for ack in result.revoked_acks:
-            log.info("Acknowledgment #%d on %s (%s) revoked: %s", ack.id, ack.activity_id, ack.check, ack.revoked_reason)
+            log.info("Acknowledgment of issue %s on %s (%s) revoked: %s", ack.issue_number, ack.activity_id,
+                     ack.check, ack.revoked_reason)
         for record in result.new:
             log.info("New issue: %s", label(record))
         for record in result.reopened:

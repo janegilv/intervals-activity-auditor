@@ -18,6 +18,7 @@ def activity_to_dict(view: ActivityView) -> dict:
         "deleted": a is None,
         "issues": [
             {
+                "number": i.number,
                 "key": i.key,
                 "check": i.check,
                 "severity": i.severity,

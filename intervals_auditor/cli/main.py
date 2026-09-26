@@ -70,32 +70,36 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--check", choices=list(CHECKS), help="Only issues from this check.")
 
     p = command("show", "Everything about one activity: issues (incl. history) and acknowledgments.")
-    p.add_argument("activity_id")
+    p.add_argument("ref", metavar="ID", help="activity id, or an issue number to show its activity")
 
-    p = command("ack", "Acknowledge the open issues on an activity so they're no longer reported.", epilog="""\
+    p = command("ack", "Acknowledge issues so they're no longer reported.", epilog="""\
 examples:
-  main.py ack i123456789 -n "two real sessions"
-  main.py ack i123456789 --check garmin_link_only -n "no Strava copy on purpose"
-  main.py ack i123456789 --only-this -n "..."   leave the other half of a duplicate pair alone
+  main.py ack 12 -n "two real sessions"          issue 12
+  main.py ack 12 13 17 -n "..."                  several issues
+  main.py ack i123456789 -n "..."                all open issues on an activity
+  main.py ack i123456789 --check garmin_link_only -n "..."
+  main.py ack 12 --only-this -n "..."            leave the other half of a duplicate pair alone
 
-The activity id is shown after "activity:" in the `run` and `issues`
-output. The "i" prefix Intervals.icu uses is optional: `ack 123456789`
-finds i123456789. Strava-only activities have a plain number.
-Acknowledged issues stay hidden until the activity changes; list them with
-`issues --all` or `acks`, and undo with `unack`.""")
-    p.add_argument("activity_id")
+Issue numbers are shown after "issue:" and activity ids after "activity:"
+in the `run` and `issues` output. The "i" prefix of activity ids is
+optional (123456789 finds i123456789); "#12" always means issue 12.
+Acknowledged issues stay hidden until an activity involved changes; list
+them with `issues --all` or `acks`, and undo with `unack`.""")
+    p.add_argument("refs", nargs="+", metavar="ID", help="issue number(s) and/or activity id(s)")
     p.add_argument("-n", "--note", default="", help="Why this is fine (stored with the acknowledgment).")
-    p.add_argument("--check", choices=list(CHECKS), help="Only acknowledge this check's issue(s).")
+    p.add_argument("--check", choices=list(CHECKS),
+                   help="With an activity id: only acknowledge this check's issue(s).")
     p.add_argument("--only-this", action="store_true",
                    help="Don't also acknowledge the mirrored issue on related activities (e.g. the other "
                         "half of a duplicate pair).")
 
-    p = command("unack", "Revoke acknowledgments on an activity; its issues are reported again.", epilog="""\
+    p = command("unack", "Revoke acknowledgments; the issues are reported again.", epilog="""\
 examples:
+  main.py unack 12
   main.py unack i123456789
   main.py unack i123456789 --check duplicate_overlap""")
-    p.add_argument("activity_id")
-    p.add_argument("--check", choices=list(CHECKS), help="Only this check's acknowledgment(s).")
+    p.add_argument("refs", nargs="+", metavar="ID", help="issue number(s) and/or activity id(s)")
+    p.add_argument("--check", choices=list(CHECKS), help="With an activity id: only this check's acknowledgment(s).")
     p.add_argument("--only-this", action="store_true", help="Leave related activities' acknowledgments alone.")
 
     p = command("acks", "List acknowledgments.")
@@ -194,32 +198,53 @@ def resolve_activity(app: App, ref: str) -> str:
     return activity_id
 
 
+def resolve_refs(app: App, refs: list[str]) -> list[tuple[str, str | int]]:
+    """Issue numbers / activity ids from the command line; all must exist."""
+    resolved, unknown = [], []
+    for ref in refs:
+        target = app.queries.resolve_ref(ref)
+        (resolved if target else unknown).append(target or ref)
+    if unknown:
+        raise NotFoundError(f"No issue number or activity: {', '.join(unknown)}")
+    return resolved
+
+
 def cmd_show(app: App, args) -> int:
-    detail = app.queries.activity_detail(resolve_activity(app, args.activity_id))
-    print(render.activity_detail(detail))
+    kind, value = resolve_refs(app, [args.ref])[0]
+    activity_id = value if kind == "activity" else app.issues.get_by_number(value).activity_id
+    print(render.activity_detail(app.queries.activity_detail(activity_id)))
     return 0
 
 
 def cmd_ack(app: App, args) -> int:
-    args.activity_id = resolve_activity(app, args.activity_id)
-    created = app.ack_service.acknowledge(args.activity_id, check=args.check, note=args.note,
-                                          include_related=not args.only_this)
+    created = []
+    for kind, value in resolve_refs(app, args.refs):
+        if kind == "issue":
+            created += app.ack_service.acknowledge_issue(value, note=args.note, include_related=not args.only_this)
+        else:
+            created += app.ack_service.acknowledge(value, check=args.check, note=args.note,
+                                                   include_related=not args.only_this)
     if not created:
-        print(f"Nothing to acknowledge: no unacknowledged open issues on {args.activity_id}"
-              + (f" for {args.check}" if args.check else "") + ".")
+        print(f"Nothing to acknowledge: no unacknowledged open issues for {' '.join(args.refs)}"
+              + (f" ({args.check})" if args.check else "") + ".")
         return 0
     print(f"Acknowledged {len(created)} issue(s):")
     print(render.acks_list(created))
     print()
-    print(f"They're hidden until an activity involved changes. Undo with: {render.cli_prefix()} unack {args.activity_id}")
+    undo = " ".join(str(a.issue_number) for a in created)
+    print(f"They're hidden until an activity involved changes. Undo with: {render.cli_prefix()} unack {undo}")
     return 0
 
 
 def cmd_unack(app: App, args) -> int:
-    args.activity_id = resolve_activity(app, args.activity_id)
-    revoked = app.ack_service.unacknowledge(args.activity_id, check=args.check, include_related=not args.only_this)
+    revoked = []
+    for kind, value in resolve_refs(app, args.refs):
+        if kind == "issue":
+            revoked += app.ack_service.unacknowledge_issue(value, include_related=not args.only_this)
+        else:
+            revoked += app.ack_service.unacknowledge(value, check=args.check, include_related=not args.only_this)
     if not revoked:
-        print(f"No active acknowledgments on {args.activity_id}.")
+        print(f"No active acknowledgments for {' '.join(args.refs)}.")
         return 0
     print(f"Revoked {len(revoked)} acknowledgment(s); the issues will be reported again:")
     print(render.acks_list(revoked))

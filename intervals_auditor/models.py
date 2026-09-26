@@ -158,6 +158,7 @@ class IssueRecord:
     notified_at: str | None = None
     open_count: int = 1
     reopen_reason: str | None = None
+    number: int | None = None  # short, stable id to type in commands
 
     @property
     def is_open(self) -> bool:
@@ -177,6 +178,7 @@ class Acknowledgment:
     created_at: str
     revoked_at: str | None = None
     revoked_reason: str | None = None
+    issue_number: int | None = None
 
     @property
     def is_active(self) -> bool:

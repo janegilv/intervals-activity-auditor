@@ -40,6 +40,27 @@ class SchemaTest(unittest.TestCase):
             db.close()
 
 
+class IssueNumberMigrationTest(unittest.TestCase):
+    def test_existing_issues_get_numbers_in_the_order_found(self):
+        from intervals_auditor.db import MIGRATIONS
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "v1.sqlite"
+            conn = sqlite3.connect(path)
+            MIGRATIONS[0](conn)
+            conn.execute("PRAGMA user_version = 1")
+            for key, seen in (("b|x", "2026-09-02"), ("a|x", "2026-09-01")):
+                conn.execute("INSERT INTO issues (issue_key, activity_id, check_name, severity, summary, "
+                             "status, first_seen_at, last_seen_at) VALUES (?, 'a', 'x', 'info', 's', 'open', ?, ?)",
+                             (key, seen, seen))
+            conn.commit()
+            conn.close()
+            db = Database(path)
+            self.assertEqual(db.conn.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
+            numbers = dict(db.conn.execute("SELECT issue_key, number FROM issues"))
+            self.assertEqual(numbers, {"a|x": 1, "b|x": 2})
+            db.close()
+
+
 class ActivityRepositoryTest(unittest.TestCase):
     def test_upsert_tracks_inserted_changed_unchanged(self):
         r = Repos()

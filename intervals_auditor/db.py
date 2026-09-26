@@ -128,7 +128,21 @@ def _migration_1(conn: sqlite3.Connection) -> None:
     """)
 
 
-MIGRATIONS = [_migration_1]
+def _migration_2(conn: sqlite3.Connection) -> None:
+    """Issue numbers: a short, stable number per issue to type in commands
+    (`ack 12`). Existing issues are numbered in the order they were found."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(issues)")}
+    if "number" not in columns:
+        conn.execute("ALTER TABLE issues ADD COLUMN number INTEGER")
+    start = conn.execute("SELECT COALESCE(MAX(number), 0) FROM issues").fetchone()[0]
+    keys = [r[0] for r in conn.execute(
+        "SELECT issue_key FROM issues WHERE number IS NULL ORDER BY first_seen_at, rowid")]
+    conn.executemany("UPDATE issues SET number = ? WHERE issue_key = ?",
+                     [(start + i, key) for i, key in enumerate(keys, 1)])
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_number ON issues(number)")
+
+
+MIGRATIONS = [_migration_1, _migration_2]
 SCHEMA_VERSION = len(MIGRATIONS)
 
 

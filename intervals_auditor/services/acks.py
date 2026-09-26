@@ -55,12 +55,45 @@ class AckService:
         activities are acknowledged too, with the same note."""
         if self.activities.get(activity_id) is None:
             raise NotFoundError(f"No activity {activity_id!r} in the database.")
+        issues = self.issues.list(status="open", activity_id=activity_id, checks=[check] if check else None)
+        return self._acknowledge(issues, note=note, include_related=include_related)
+
+    def acknowledge_issue(self, number: int, *, note: str = "",
+                          include_related: bool = True) -> list[Acknowledgment]:
+        """Acknowledge one issue by its number (and, with include_related,
+        its mirror on the related activity). A resolved issue has nothing to
+        acknowledge."""
+        issue = self._issue(number)
+        return self._acknowledge([issue] if issue.is_open else [], note=note, include_related=include_related)
+
+    def unacknowledge(self, activity_id: str, *, check: str | None = None,
+                      include_related: bool = True) -> list[Acknowledgment]:
+        """Revoke active acknowledgments on an activity (and, with
+        include_related, those on related activities that point back at it)."""
+        selected = [
+            ack for ack in self.acks.list(activity_id=activity_id)
+            if (check is None or ack.check == check)
+            and (include_related or ack.activity_id == activity_id)
+        ]
+        return self._revoke(selected)
+
+    def unacknowledge_issue(self, number: int, *, include_related: bool = True) -> list[Acknowledgment]:
+        issue = self._issue(number)
+        keys = {issue.key} | ({m.key for m in self._mirrors(issue)} if include_related else set())
+        return self._revoke([ack for ack in self.acks.list() if ack.issue_key in keys])
+
+    def _issue(self, number: int) -> IssueRecord:
+        issue = self.issues.get_by_number(number)
+        if issue is None:
+            raise NotFoundError(f"No issue number {number}.")
+        return issue
+
+    def _acknowledge(self, issues: list[IssueRecord], *, note: str,
+                     include_related: bool) -> list[Acknowledgment]:
         active = self.acks.active_by_issue_key()
         targets: dict[str, IssueRecord] = {}
-        for issue in self.issues.list(status="open", activity_id=activity_id,
-                                      checks=[check] if check else None):
-            candidates = [issue] + (self._mirrors(issue) if include_related else [])
-            for candidate in candidates:
+        for issue in issues:
+            for candidate in [issue] + (self._mirrors(issue) if include_related else []):
                 if candidate.key not in active:
                     targets.setdefault(candidate.key, candidate)
 
@@ -79,27 +112,19 @@ class AckService:
                 )
                 created.append(ack)
         for ack in created:
-            log.info("Acknowledged #%d: %s %s%s%s", ack.id, ack.activity_id, ack.check,
+            log.info("Acknowledged issue %s: %s %s%s%s", ack.issue_number, ack.activity_id, ack.check,
                      f" (with {'+'.join(ack.related_activity_ids)})" if ack.related_activity_ids else "",
                      f" -- {note}" if note else "")
         return created
 
-    def unacknowledge(self, activity_id: str, *, check: str | None = None,
-                      include_related: bool = True) -> list[Acknowledgment]:
-        """Revoke active acknowledgments on an activity (and, with
-        include_related, those on related activities that point back at it)."""
-        selected = [
-            ack for ack in self.acks.list(activity_id=activity_id)
-            if (check is None or ack.check == check)
-            and (include_related or ack.activity_id == activity_id)
-        ]
+    def _revoke(self, selected: list[Acknowledgment]) -> list[Acknowledgment]:
         now = to_iso(self.clock())
         with self.db.transaction():
             for ack in selected:
                 self.acks.revoke(ack.id, now, UNACKNOWLEDGED)
                 ack.revoked_at, ack.revoked_reason = now, UNACKNOWLEDGED
         for ack in selected:
-            log.info("Unacknowledged #%d: %s %s", ack.id, ack.activity_id, ack.check)
+            log.info("Unacknowledged issue %s: %s %s", ack.issue_number, ack.activity_id, ack.check)
         return selected
 
     def list(self, *, include_revoked: bool = False, activity_id: str | None = None) -> list[Acknowledgment]:

@@ -80,11 +80,12 @@ python main.py --only missing_distance   # run just one check (also works for di
 
 python main.py issues                # open issues per activity, from the database (no sync)
 python main.py issues --all          # ...including acknowledged ones
-python main.py show i123456789       # everything about one activity: issues, history, acks, link
+python main.py show i123456789       # one activity: issues, history, acknowledgments, link
 
-python main.py ack i123456789 -n "two real sessions"   # acknowledge its open issues
-python main.py ack i123456789 --check garmin_link_only # ...only one check's issue
-python main.py unack i123456789      # report them again
+python main.py ack 12 -n "two real sessions"   # acknowledge issue 12
+python main.py ack 12 13 17 -n "..."           # several issues at once
+python main.py ack i123456789 -n "..."         # all open issues on an activity
+python main.py unack 12              # report it again
 python main.py acks                  # list acknowledgments (--all includes revoked ones)
 
 python main.py status                # last sync, counts, notifiers, recent runs
@@ -111,10 +112,15 @@ Every run also writes `output/report.md`, `output/report.json` and
   stored in the database with your note, the time, and a snapshot and link
   of every activity involved, so it can be investigated later even if the
   activity is changed or deleted.
-- `ack <id>` acknowledges all open issues on that activity, and also the
-  mirrored issue on related activities (the other half of a duplicate
-  pair). Use `--check` to pick one check and `--only-this` to leave related
-  activities alone.
+- **Every issue has a number** (`issue: 12` in the output) that stays the
+  same for as long as the issue exists, and every activity has its
+  Intervals.icu id (`activity: i123456789`). `ack`, `unack` and `show`
+  take either, several at once. The "i" prefix of an activity id is
+  optional; `#12` always means issue 12.
+- `ack` with an activity id acknowledges all open issues on that activity
+  (`--check` limits it to one check). For a duplicate pair, the mirrored
+  issue on the other activity is acknowledged too, with the same note;
+  `--only-this` leaves it alone.
 - **A change to an activity revokes its acknowledgments.** Each
   acknowledgment remembers a fingerprint of the activities' start time,
   durations, distance, type, source and Garmin/Strava links. If any of that

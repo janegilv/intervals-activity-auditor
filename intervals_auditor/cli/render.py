@@ -33,38 +33,50 @@ def next_steps(views: list[ActivityView]) -> str:
     if not views or not views[0].issues:
         return ""
     p, example = cli_prefix(), views[0]
-    aid, check = example.activity_id, example.issues[0].check
-    lines = ['To look at an activity or acknowledge its issues, copy the id after "activity:", e.g.:']
-    lines += _commands([
-        (f"{p} show {aid}", "details, history and links"),
-        (f'{p} ack {aid} -n "why it\'s fine"', "acknowledge all its open issues"),
-        (f'{p} ack {aid} --check {check} -n "..."', "acknowledge only one check's issue"),
-    ])
+    aid = example.activity_id
+    numbers = [str(i.number) for v in views for i in v.issues][:2]
+    lines = ['To acknowledge, copy an issue number (after "issue:") or an activity id '
+             '(after "activity:"), e.g.:']
+    rows = [(f'{p} ack {numbers[0]} -n "why it\'s fine"', "one issue")]
+    if len(numbers) > 1:
+        rows.append((f'{p} ack {" ".join(numbers)} -n "..."', "several issues at once"))
+    rows += [
+        (f'{p} ack {aid} -n "..."', "all open issues on an activity"),
+        (f"{p} show {aid}", "details, history and links (also works with an issue number)"),
+    ]
+    lines += _commands(rows)
     lines.append("Acknowledged issues are hidden until the activity changes.")
-    lines.append(f"See them with `{p} issues --all`; undo with `{p} unack <id>`.")
+    lines.append(f"See them with `{p} issues --all`; undo with `{p} unack <issue or activity>`.")
     return "\n".join(lines)
 
 
-def issue_line(issue: IssueView, *, with_state: bool = False) -> str:
+def _number_width(issues) -> int:
+    return max((len(str(i.number)) for i in issues), default=1)
+
+
+def issue_line(issue: IssueView, *, width: int = 1, with_state: bool = False) -> str:
     state = f"{issue.state.upper():<12} " if with_state else ""
-    return f"{state}[{issue.severity.upper()}] {issue.check}: {issue.summary}"
+    return (f"issue: {str(issue.number).ljust(width)}  {state}"
+            f"[{issue.severity.upper()}] {issue.check}: {issue.summary}")
 
 
 def ack_line(ack: Acknowledgment) -> str:
     note = f": {ack.note}" if ack.note else ""
-    return f"acknowledged #{ack.id} {format_local(ack.created_at)}{note}"
+    return f"acknowledged {format_local(ack.created_at)}{note}"
 
 
 def activity_views(views: list[ActivityView]) -> str:
     blocks = []
+    width = _number_width(i for v in views for i in v.issues)
+    indent = " " * (len("  issue: ") + width + 2)
     for view in views:
         lines = [activity_heading(view.activity, view.activity_id), f"  activity: {view.activity_id}  {view.url}"]
         for issue in view.issues:
-            lines.append(f"  {issue_line(issue)}")
+            lines.append(f"  {issue_line(issue, width=width)}")
             if issue.ack is not None:
-                lines.append(f"      {ack_line(issue.ack)}")
+                lines.append(f"{indent}{ack_line(issue.ack)}")
             elif issue.reopen_reason:
-                lines.append(f"      reopened: {issue.reopen_reason}")
+                lines.append(f"{indent}reopened: {issue.reopen_reason}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 
@@ -94,8 +106,9 @@ def activity_detail(detail: ActivityDetail) -> str:
     lines += ["", "Issues:"]
     if not detail.issues:
         lines.append("  none")
+    width = _number_width(detail.issues)
     for issue in detail.issues:
-        lines.append(f"  {issue_line(issue, with_state=True)}")
+        lines.append(f"  {issue_line(issue, width=width, with_state=True)}")
         when = f"since {format_local(issue.first_seen_at)}"
         if issue.state == RESOLVED:
             when = f"resolved {format_local(issue.resolved_at)}"
@@ -119,13 +132,14 @@ def activity_detail(detail: ActivityDetail) -> str:
 
     p, aid = cli_prefix(), detail.activity_id
     rows = []
-    open_checks = sorted({i.check for i in detail.issues if i.state == OPEN})
-    if open_checks:
-        rows.append((f'{p} ack {aid} -n "why it\'s fine"', "acknowledge all its open issues"))
-        if len(open_checks) > 1:
-            rows.append((f'{p} ack {aid} --check {open_checks[0]} -n "..."', "acknowledge only one check's issue"))
-    if any(i.state == ACKNOWLEDGED for i in detail.issues):
-        rows.append((f"{p} unack {aid}", "report its acknowledged issues again"))
+    open_issues = [i for i in detail.issues if i.state == OPEN]
+    acked = [i for i in detail.issues if i.state == ACKNOWLEDGED]
+    if open_issues:
+        rows.append((f'{p} ack {open_issues[0].number} -n "why it\'s fine"', "acknowledge this issue"))
+        if len(open_issues) > 1:
+            rows.append((f'{p} ack {aid} -n "..."', "acknowledge all its open issues"))
+    if acked:
+        rows.append((f"{p} unack {acked[0].number}", "report this issue again"))
     if rows:
         lines += ["", "Next:"] + _commands(rows)
     return "\n".join(lines)
@@ -133,12 +147,12 @@ def activity_detail(detail: ActivityDetail) -> str:
 
 def ack_summary(ack: Acknowledgment) -> str:
     related = f" (with {', '.join(ack.related_activity_ids)})" if ack.related_activity_ids else ""
-    state = "active " if ack.is_active else "revoked"
-    text = f"#{ack.id} {state} {format_local(ack.created_at)}  {ack.activity_id} {ack.check}{related}"
+    text = (f"issue: {ack.issue_number}  acknowledged {format_local(ack.created_at)}  "
+            f"activity: {ack.activity_id}  {ack.check}{related}")
     if ack.note:
-        text += f"  note: {ack.note}"
+        text += f"\n      note: {ack.note}"
     if not ack.is_active:
-        text += f"\n      revoked {format_local(ack.revoked_at)}: {ack.revoked_reason}"
+        text += f"\n      REVOKED {format_local(ack.revoked_at)}: {ack.revoked_reason}"
     return text
 
 
@@ -147,8 +161,8 @@ def acks_list(acks: list[Acknowledgment]) -> str:
     for ack in acks:
         snapshot = ack.snapshot.get(ack.activity_id)
         lines = [ack_summary(ack),
-                 f"      {activity_heading(None, ack.activity_id, snapshot) if snapshot else ack.activity_id}",
-                 f"      {ack.url}"]
+                 f"      {activity_heading(None, ack.activity_id, snapshot) if snapshot else ack.activity_id}  "
+                 f"{ack.url}"]
         for rid in ack.related_activity_ids:
             related = ack.snapshot.get(rid)
             if related:

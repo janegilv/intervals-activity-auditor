@@ -53,7 +53,7 @@ def build_issue_notification(views: list[ActivityView]) -> Notification:
     for view in views:
         lines = []
         for issue in view.issues:
-            line = f"[{issue.severity.upper()}] {issue.check}: {issue.summary}"
+            line = f"issue {issue.number}: [{issue.severity.upper()}] {issue.check}: {issue.summary}"
             if issue.reopen_reason:
                 line += f" (reopened: {issue.reopen_reason})"
             lines.append(line)
@@ -65,7 +65,7 @@ def build_issue_notification(views: list[ActivityView]) -> Notification:
         title=f"{issue_count} activity {plural_i} to look at",
         summary=f"New or reopened on {len(views)} {plural_a} in Intervals.icu:",
         items=items,
-        footer="Details: python main.py show <id> · Acknowledge: python main.py ack <id>",
+        footer="Details: python main.py show <issue> · Acknowledge: python main.py ack <issue>",
     )
 
 

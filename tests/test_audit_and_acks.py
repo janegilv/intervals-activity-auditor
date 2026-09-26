@@ -98,6 +98,28 @@ class AuditAndAckTest(unittest.TestCase):
         with self.assertRaises(NotFoundError):
             self.ack.acknowledge("missing")
 
+    def test_issue_numbers_are_stable_and_usable_for_acks(self):
+        self.audit.run()
+        numbers = {r.key: r.number for r in self.r.issues.list()}
+        self.assertEqual(sorted(numbers.values()), [1, 2, 3])
+        # resolve and reopen i3's issue: same number
+        self.r.add(payload("i3", start="2026-09-21T07:00:00", seconds=3000))
+        self.audit.run()
+        self.r.add(payload("i3", start="2026-09-21T07:00:00", seconds=30))
+        self.audit.run()
+        self.assertEqual(self.r.issues.get("i3|under_time_limit").number, numbers["i3|under_time_limit"])
+
+        pair = numbers["i1|duplicate_overlap|i2"]
+        created = self.ack.acknowledge_issue(pair, note="both real")
+        self.assertEqual(sorted(a.issue_number for a in created), sorted([pair, numbers["i2|duplicate_overlap|i1"]]))
+        self.assertEqual(self.ack.unacknowledge_issue(pair, include_related=False)[0].issue_number, pair)
+        self.assertEqual(len(self.ack.list()), 1)  # the mirror stays acknowledged
+        self.assertEqual(self.queries.resolve_ref(f"#{pair}"), ("issue", pair))
+        self.assertEqual(self.queries.resolve_ref("1"), ("activity", "i1"))  # activity ids win...
+        self.assertEqual(self.queries.resolve_ref("#1"), ("issue", 1))       # ...unless written as #1
+        with self.assertRaises(NotFoundError):
+            self.ack.acknowledge_issue(99)
+
     def test_deleted_activity_resolves_issue_and_revokes_ack(self):
         self.audit.run()
         self.ack.acknowledge("i3", note="false start")

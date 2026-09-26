@@ -79,6 +79,19 @@ class QueryService:
             candidates.append(f"i{ref[1:]}")
         return next((c for c in candidates if self._known_activity(c)), None)
 
+    def resolve_ref(self, ref: str) -> tuple[str, str | int] | None:
+        """What a command argument refers to: ("activity", activity_id) or
+        ("issue", number). Activity ids win; "#12" always means issue 12."""
+        ref = ref.strip()
+        if not ref.startswith("#"):
+            activity_id = self.resolve_activity_id(ref)
+            if activity_id is not None:
+                return "activity", activity_id
+        number = ref.lstrip("#")
+        if number.isdigit() and self.issues.get_by_number(int(number)) is not None:
+            return "issue", int(number)
+        return None
+
     def activity_detail(self, activity_id: str) -> ActivityDetail | None:
         activity = self.activities.get(activity_id)
         issues = self._issue_views(activity_id=activity_id)

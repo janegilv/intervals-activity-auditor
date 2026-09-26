@@ -172,7 +172,7 @@ class IssueRepository:
             severity=r["severity"], summary=r["summary"], details=json.loads(r["details_json"]),
             status=r["status"], first_seen_at=r["first_seen_at"], last_seen_at=r["last_seen_at"],
             resolved_at=r["resolved_at"], notified_at=r["notified_at"],
-            open_count=r["open_count"], reopen_reason=r["reopen_reason"],
+            open_count=r["open_count"], reopen_reason=r["reopen_reason"], number=r["number"],
         )
 
     def list(self, *, status: str | None = None, activity_id: str | None = None,
@@ -194,11 +194,15 @@ class IssueRepository:
         row = self.conn.execute("SELECT * FROM issues WHERE issue_key = ?", (key,)).fetchone()
         return self._from_row(row) if row else None
 
+    def get_by_number(self, number: int) -> IssueRecord | None:
+        row = self.conn.execute("SELECT * FROM issues WHERE number = ?", (number,)).fetchone()
+        return self._from_row(row) if row else None
+
     def insert(self, issue: Issue, now: str) -> None:
         self.conn.execute("""
         INSERT INTO issues (issue_key, activity_id, check_name, related_activity_ids, severity,
-                            summary, details_json, status, first_seen_at, last_seen_at)
-        VALUES (?,?,?,?,?,?,?,'open',?,?)
+                            summary, details_json, status, first_seen_at, last_seen_at, number)
+        VALUES (?,?,?,?,?,?,?,'open',?,?, (SELECT COALESCE(MAX(number), 0) + 1 FROM issues))
         """, (issue.key, issue.activity_id, issue.check, _join_ids(issue.related_activity_ids),
               issue.severity, issue.summary, json.dumps(issue.details, default=str), now, now))
 
@@ -253,7 +257,12 @@ class AcknowledgmentRepository:
             note=r["note"], fingerprints=json.loads(r["fingerprints_json"]),
             snapshot=json.loads(r["snapshot_json"]), created_at=r["created_at"],
             revoked_at=r["revoked_at"], revoked_reason=r["revoked_reason"],
+            issue_number=r["issue_number"],
         )
+
+    # Acknowledgments are shown with the number of the issue they cover.
+    _SELECT = ("SELECT a.*, i.number AS issue_number FROM acknowledgments a "
+               "LEFT JOIN issues i ON i.issue_key = a.issue_key")
 
     def create(self, *, issue: IssueRecord, note: str, fingerprints: dict, snapshot: dict,
                now: str) -> Acknowledgment:
@@ -266,18 +275,18 @@ class AcknowledgmentRepository:
         return self.get(cur.lastrowid)
 
     def get(self, ack_id: int) -> Acknowledgment | None:
-        row = self.conn.execute("SELECT * FROM acknowledgments WHERE id = ?", (ack_id,)).fetchone()
+        row = self.conn.execute(f"{self._SELECT} WHERE a.id = ?", (ack_id,)).fetchone()
         return self._from_row(row) if row else None
 
     def list(self, *, include_revoked: bool = False, activity_id: str | None = None) -> list[Acknowledgment]:
-        sql, params = "SELECT * FROM acknowledgments WHERE 1=1", []
+        sql, params = f"{self._SELECT} WHERE 1=1", []
         if not include_revoked:
-            sql += " AND revoked_at IS NULL"
+            sql += " AND a.revoked_at IS NULL"
         if activity_id:
             # The activity itself, or one of the related activities.
-            sql += " AND (activity_id = ? OR instr('+' || related_activity_ids || '+', ?) > 0)"
+            sql += " AND (a.activity_id = ? OR instr('+' || a.related_activity_ids || '+', ?) > 0)"
             params += [activity_id, f"+{activity_id}+"]
-        return [self._from_row(r) for r in self.conn.execute(sql + " ORDER BY created_at, id", params)]
+        return [self._from_row(r) for r in self.conn.execute(sql + " ORDER BY a.created_at, a.id", params)]
 
     def active_by_issue_key(self) -> dict[str, Acknowledgment]:
         return {a.issue_key: a for a in self.list()}
