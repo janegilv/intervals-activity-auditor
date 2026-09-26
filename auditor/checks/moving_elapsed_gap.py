@@ -21,7 +21,7 @@ class MovingElapsedGapCheck(ActivityCheck):
         # negative gaps are tolerated rather than flagged.
         negative_tolerance = int(self.config.get("negative_gap_tolerance_seconds", 5))
 
-        findings = []
+        issues = []
         for a in activities:
             moving, elapsed = a.moving_time, a.elapsed_time
             if not moving or not elapsed:
@@ -29,9 +29,9 @@ class MovingElapsedGapCheck(ActivityCheck):
             gap = elapsed - moving
 
             if gap < -negative_tolerance:
-                findings.append(self.finding(
+                issues.append(self.issue(
+                    a,
                     "Moving time exceeds elapsed time, which shouldn't be possible",
-                    [a],
                     [{
                         "rule": "negative_moving_elapsed_gap",
                         "moving_time_seconds": moving,
@@ -46,10 +46,10 @@ class MovingElapsedGapCheck(ActivityCheck):
             if gap_percent < min_gap_percent or gap < min_gap_seconds:
                 continue
 
-            findings.append(self.finding(
+            issues.append(self.issue(
+                a,
                 f"Elapsed time exceeds moving time by {gap_percent:.0f}% "
                 f"({gap}s of unpaused stopped time)",
-                [a],
                 [{
                     "rule": "moving_elapsed_gap",
                     "moving_time_seconds": moving,
@@ -62,4 +62,4 @@ class MovingElapsedGapCheck(ActivityCheck):
                 # legitimately -- so this stays informational by default.
                 "info",
             ))
-        return findings
+        return issues

@@ -46,7 +46,7 @@ class ImplausiblePaceCheck(ActivityCheck):
         # reading -- not a marginal one -- gets reported.
         margin = float(self.config.get("margin_kmh", 2.0))
 
-        findings = []
+        issues = []
         for a in activities:
             type_bounds = bounds.get(a.activity_type)
             if not type_bounds:
@@ -68,11 +68,11 @@ class ImplausiblePaceCheck(ActivityCheck):
             # just barely missing it.
             severity = "high" if ratio >= 2 else "medium"
 
-            findings.append(self.finding(
+            issues.append(self.issue(
+                a,
                 f"Average speed ({speed:.1f} km/h) is implausibly {direction} the "
                 f"expected range for {a.activity_type} ({low}-{high} km/h, "
                 f"±{margin:g} km/h margin)",
-                [a],
                 [{
                     "rule": "speed_out_of_range",
                     "average_speed_kmh": round(speed, 2),
@@ -82,4 +82,4 @@ class ImplausiblePaceCheck(ActivityCheck):
                 }],
                 severity,
             ))
-        return findings
+        return issues

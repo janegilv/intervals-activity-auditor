@@ -1,11 +1,16 @@
-from .base import ActivityCheck
+from .base import ActivityCheck, describe
+
 
 class DuplicateOverlapCheck(ActivityCheck):
+    """Compares activities pairwise. A pair that overlaps produces one issue
+    on each of the two activities, each naming the other as related --
+    acknowledging or fixing it is then tracked per activity."""
+
     name = "duplicate_overlap"
     description = "Finds activities with substantial temporal overlap and similar characteristics."
 
     def run(self, activities):
-        findings = []
+        issues = []
         min_overlap = float(self.config.get("minimum_overlap_percent", 90.0))
         max_start_diff = int(self.config.get("maximum_start_difference_seconds", 300))
         max_duration_diff = float(self.config.get("maximum_duration_difference_percent", 10.0))
@@ -28,6 +33,8 @@ class DuplicateOverlapCheck(ActivityCheck):
             for b in ordered[i + 1:]:
                 if b.start >= a.end:
                     break
+                if b.id in ignore_activities:
+                    continue
                 if require_same_type and a.activity_type != b.activity_type:
                     continue
 
@@ -45,7 +52,10 @@ class DuplicateOverlapCheck(ActivityCheck):
                     overlap_pct = 100.0
                     if overlap_pct < min_overlap:
                         continue
-                    summary = "A zero-duration activity's timestamp falls within another activity's time window"
+                    summaries = {
+                        point.id: f"Has no recorded duration and its timestamp falls inside {describe(container)}",
+                        container.id: f"Contains the timestamp of zero-duration activity {describe(point)}",
+                    }
                     reasons = [{
                         "rule": "point_in_time_within_activity",
                         "details": f"{point.id} has no recorded duration; its timestamp falls inside {container.id}'s time window.",
@@ -54,7 +64,10 @@ class DuplicateOverlapCheck(ActivityCheck):
                     overlap_pct = overlap / shorter * 100
                     if overlap_pct < min_overlap:
                         continue
-                    summary = f"Activities overlap by {overlap_pct:.1f}% of the shorter activity"
+                    summaries = {
+                        a.id: f"Overlaps {describe(b)} by {overlap_pct:.1f}% of the shorter activity",
+                        b.id: f"Overlaps {describe(a)} by {overlap_pct:.1f}% of the shorter activity",
+                    }
                     reasons = [{
                         "rule": "time_overlap",
                         "overlap_seconds": round(overlap),
@@ -84,5 +97,6 @@ class DuplicateOverlapCheck(ActivityCheck):
                 else:
                     severity = "low"
 
-                findings.append(self.finding(summary, [a, b], reasons, severity))
-        return findings
+                issues.append(self.issue(a, summaries[a.id], reasons, severity, related=[b]))
+                issues.append(self.issue(b, summaries[b.id], [dict(r) for r in reasons], severity, related=[a]))
+        return issues

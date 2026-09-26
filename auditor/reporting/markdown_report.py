@@ -1,19 +1,43 @@
 from pathlib import Path
 
-def write(findings, path: Path):
-    lines = ["# Intervals.icu Activity Audit", ""]
-    if not findings:
-        lines += ["No findings.", ""]
-    for i, x in enumerate(findings, 1):
-        lines += [f"## {i}. [{x['severity'].upper()}] {x['check']}", "", x["summary"], "", "**Activities:**"]
-        for a in x["activities"]:
-            lines.append(f"- **{a['name']}** (`{a['id']}`) — {a['type']} — {a['start']} — {a['end']} — [Investigate]({a['url']})")
-            #import sys
-            #import pprint
-            #pprint.pprint(a)
-            #sys.exit(1)
-        lines += ["", "**Why flagged:**"]
-        for r in x["reasons"]:
-            lines.append(f"- `{r['rule']}`: " + ", ".join(f"{k}={v}" for k, v in r.items() if k != "rule"))
+from auditor.formatting import activity_heading, format_details
+from auditor.timeutil import format_local
+from auditor.views import ACKNOWLEDGED, OPEN, ActivityView
+
+
+def _section(lines, title, views, state):
+    selected = [(v, v.issues_in(state)) for v in views]
+    selected = [(v, issues) for v, issues in selected if issues]
+    lines += [f"## {title}", ""]
+    if not selected:
+        lines += ["None.", ""]
+        return
+    for view, issues in selected:
+        lines += [f"### {activity_heading(view.activity, view.activity_id)}", "",
+                  f"`{view.activity_id}` · [Open in Intervals.icu]({view.url})", ""]
+        for issue in issues:
+            lines.append(f"- **{issue.severity.upper()}** `{issue.check}` — {issue.summary}")
+            for detail in format_details(issue.details):
+                lines.append(f"  - {detail}")
+            for rid, url in issue.related_urls:
+                lines.append(f"  - related: [{rid}]({url})")
+            if issue.ack is not None:
+                note = f": {issue.ack.note}" if issue.ack.note else ""
+                lines.append(f"  - acknowledged {format_local(issue.ack.created_at)}{note}")
         lines.append("")
+
+
+def write(views: list[ActivityView], path: Path, generated_at: str):
+    open_count = sum(len(v.issues_in(OPEN)) for v in views)
+    open_activities = sum(1 for v in views if v.issues_in(OPEN))
+    acked_count = sum(len(v.issues_in(ACKNOWLEDGED)) for v in views)
+    lines = [
+        "# Intervals.icu activity audit",
+        "",
+        f"Generated {format_local(generated_at)} · {open_count} open issue(s) on "
+        f"{open_activities} activit{'y' if open_activities == 1 else 'ies'} · {acked_count} acknowledged",
+        "",
+    ]
+    _section(lines, "Open issues", views, OPEN)
+    _section(lines, "Acknowledged", views, ACKNOWLEDGED)
     path.write_text("\n".join(lines), encoding="utf-8")

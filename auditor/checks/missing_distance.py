@@ -22,7 +22,7 @@ class MissingDistanceCheck(ActivityCheck):
         outdoor_types = set(self.config.get("outdoor_types", DEFAULT_OUTDOOR_TYPES))
         min_moving = int(self.config.get("minimum_moving_seconds", 60))
 
-        findings = []
+        issues = []
         for a in activities:
             if a.activity_type not in outdoor_types:
                 continue
@@ -38,9 +38,9 @@ class MissingDistanceCheck(ActivityCheck):
             if a.distance:
                 continue
 
-            findings.append(self.finding(
+            issues.append(self.issue(
+                a,
                 f"{a.activity_type} activity has no recorded distance",
-                [a],
                 [{
                     "rule": "missing_distance",
                     "activity_type": a.activity_type,
@@ -48,4 +48,4 @@ class MissingDistanceCheck(ActivityCheck):
                 }],
                 "medium",
             ))
-        return findings
+        return issues

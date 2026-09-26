@@ -6,24 +6,10 @@ from auditor.config import load_settings
 from auditor.sources.intervals import IntervalsClient
 from auditor.cache import ActivityCache
 from auditor.sync import sync_activities
-from auditor.checks.duplicate_overlap import DuplicateOverlapCheck
-from auditor.checks.under_time_limit import UnderTimeLimitCheck
-from auditor.checks.over_time_limit import OverTimeLimitCheck
-from auditor.checks.garmin_link_only import GarminLinkOnlyCheck
-from auditor.checks.implausible_pace import ImplausiblePaceCheck
-from auditor.checks.missing_distance import MissingDistanceCheck
-from auditor.checks.moving_elapsed_gap import MovingElapsedGapCheck
-from auditor.reporting import json_report, csv_report, markdown_report
-
-CHECKS = {
-    "duplicate_overlap": DuplicateOverlapCheck,
-    "under_time_limit": UnderTimeLimitCheck,
-    "over_time_limit": OverTimeLimitCheck,
-    "garmin_link_only": GarminLinkOnlyCheck,
-    "implausible_pace": ImplausiblePaceCheck,
-    "missing_distance": MissingDistanceCheck,
-    "moving_elapsed_gap": MovingElapsedGapCheck,
-}
+from auditor.checks import CHECKS
+from auditor.reporting import write_reports
+from auditor.timeutil import to_iso, utcnow
+from auditor.views import IssueView, group_by_activity
 
 def parse_args():
     p = argparse.ArgumentParser(description="Audit Intervals.icu activities using pluggable checks.")
@@ -159,21 +145,17 @@ def main():
 
         activities = cache.all_activities()
         enabled = args.check or [name for name, cfg in settings.checks.items() if cfg.get("enabled", False)]
-        findings = []
+        issues = []
         for name in enabled:
             cfg = settings.checks.get(name, {})
             check = CHECKS[name](cfg)
             result = check.run(activities)
-            findings.extend(result)
-            print(f"{name}: {len(result)} findings")
+            issues.extend(result)
+            print(f"{name}: {len(result)} issue(s)")
 
-        findings.sort(key=lambda x: ({"high": 0, "medium": 1, "low": 2, "info": 3}.get(x["severity"], 9), x["check"]))
-        out = Path("output")
-        out.mkdir(exist_ok=True)
-        json_report.write(findings, out / "findings.json")
-        csv_report.write(findings, out / "findings.csv")
-        markdown_report.write(findings, out / "findings.md")
-        print(f"\nWrote {len(findings)} findings to output/")
+        views = group_by_activity([IssueView.from_issue(i) for i in issues], {a.id: a for a in activities})
+        write_reports(views, Path("output"), to_iso(utcnow()))
+        print(f"\nWrote {len(issues)} issue(s) on {len(views)} activities to output/report.*")
     finally:
         cache.close()
 
