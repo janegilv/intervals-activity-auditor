@@ -1,5 +1,9 @@
+import logging
 import time
+
 import requests
+
+log = logging.getLogger(__name__)
 
 TOKEN_URL = "https://www.strava.com/oauth/token"
 API_BASE = "https://www.strava.com/api/v3"
@@ -72,6 +76,7 @@ class StravaClient:
             params={"include_all_efforts": "false"},
             timeout=self.timeout,
         )
+        log.debug("GET Strava activity %s -> %s", activity_id, response.status_code)
         if response.status_code == 404:
             return None
         if response.status_code == 401:
