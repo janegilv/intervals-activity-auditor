@@ -25,147 +25,255 @@ Failed checks must manually be fixed, the script is "read-only"
 - https://www.fitfiletools.com/
   - Don't really like the section remover.
 - https://www.fitfileviewer.com/
- 
 # Intervals.icu Activity Auditor
 
-A read-only Python CLI for auditing Intervals.icu activities.
-
-The first active check finds likely duplicate activities based primarily on temporal overlap.
-The project uses a local SQLite cache so repeated runs do not need to download your full history.
+A read-only Python tool for auditing Intervals.icu activities. It keeps a
+local copy of your activities, runs a set of checks on **every activity**,
+and tracks the issues it finds **per activity** over time: new, resolved,
+reopened, or acknowledged by you. Run it by hand from the CLI, or let the
+monitor run it on a schedule and notify you (Pushover or Discord) when a
+new activity has a problem.
 
 ## Safety
 
-This project does **not** delete activities and contains no deletion API calls.
+This project never changes anything in Intervals.icu, Garmin or Strava. It
+contains no write or delete API calls; fixing an issue is always up to you.
 
 ## Setup
 
+Requires Python 3.11+.
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` and set at least:
 
 ```env
 INTERVALS_API_KEY=your_api_key_here
 INTERVALS_ATHLETE_ID=your_athlete_id_here
 ```
 
-Keep `.env` private. It is ignored by Git.
+Keep `.env` private. It is ignored by Git. Every other setting has a
+default; `.env.example` lists them all.
 
-## First sync
-
-A full initial sync is recommended:
-
-```bash
-python main.py --full-sync
-```
-
-Later, a normal run refreshes only the configured recent window:
+Then run it:
 
 ```bash
 python main.py
 ```
 
-`--full-sync` also removes any cached activity no longer present in Intervals.icu (i.e.
-deleted since your last full sync) -- see "Deleting activities" below before you next
-reach for deleting `intervals.sqlite` by hand.
+The first run fetches your whole history; after that each run fetches the
+last 30 days, plus the whole history once a day.
 
-Analyse the local cache without contacting the API:
+**Upgrading from the cache-only version:** on the first start the old
+`cache/intervals.sqlite` (including everything fetched from Strava) is
+copied to `data/auditor.sqlite`, which is used from then on. The old file
+is left untouched and can be deleted once you're happy.
+
+## Everyday use
 
 ```bash
-python main.py --offline
+python main.py                       # sync, run all checks, list open issues per activity
+python main.py --offline             # same, using stored data only (no API calls)
+python main.py --only missing_distance   # run just one check (also works for disabled checks)
+
+python main.py issues                # open issues per activity, from the database (no sync)
+python main.py issues --all          # ...including acknowledged ones
+python main.py show i123456789       # everything about one activity: issues, history, acks, link
+
+python main.py ack i123456789 -n "two real sessions"   # acknowledge its open issues
+python main.py ack i123456789 --check garmin_link_only # ...only one check's issue
+python main.py unack i123456789      # report them again
+python main.py acks                  # list acknowledgments (--all includes revoked ones)
+
+python main.py status                # last sync, counts, notifiers, recent runs
+python main.py checks                # which checks exist and are enabled
+python main.py resync                # fetch the full history now
+python main.py monitor --dry-run     # what the monitor would notify, printed instead of sent
+python main.py notify-test           # send a test notification
 ```
+
+Every run also writes `output/report.md`, `output/report.json` and
+`output/report.csv`: open and acknowledged issues grouped by activity
+(newest first), with links. The CSV has one row per activity issue.
+
+## How issues and acknowledgments work
+
+- **Everything is per activity.** A check that compares activities (like
+  `duplicate_overlap`) reports a pair as one issue on each of the two
+  activities, each naming the other as related.
+- **Issues are tracked over time.** An issue found for the first time is
+  *new*; when a later run no longer finds it (you fixed or deleted the
+  activity) it's *resolved*; if it comes back it's *reopened*.
+- **Acknowledging** says "I've looked at this, it's fine" and hides the
+  issue from `issues`, the reports' open section and notifications. It's
+  stored in the database with your note, the time, and a snapshot and link
+  of every activity involved, so it can be investigated later even if the
+  activity is changed or deleted.
+- `ack <id>` acknowledges all open issues on that activity, and also the
+  mirrored issue on related activities (the other half of a duplicate
+  pair). Use `--check` to pick one check and `--only-this` to leave related
+  activities alone.
+- **A change to an activity revokes its acknowledgments.** Each
+  acknowledgment remembers a fingerprint of the activities' start time,
+  durations, distance, type, source and Garmin/Strava links. If any of that
+  changes (renames and Intervals.icu's re-analysis don't count), the
+  acknowledgment is revoked and the issue reopens and is notified again.
+  Revoked acknowledgments are kept as history (`acks --all`).
+- Resolved issues and revoked acknowledgments are never deleted.
+
+`ignore_activities` in `checks.local.toml` (see Checks) still exists for
+permanently excluding an activity from `duplicate_overlap`, e.g. a test
+activity you edit often.
+
+## Monitoring on your Mac
+
+The monitor is `python main.py monitor`: a normal run followed by
+notifications. To run it every 30 minutes with launchd:
+
+```bash
+scripts/install-launchd.sh                    # every 30 min and at login
+INTERVAL_MINUTES=15 scripts/install-launchd.sh  # another interval (must divide 60)
+scripts/uninstall-launchd.sh
+```
+
+If the Mac is asleep at a scheduled time, launchd runs the job once when it
+wakes. The install script prints how to trigger a run right away and how to
+check its status. A lock file keeps a manual run and the scheduled run
+from overlapping.
+
+Notification rules:
+
+- You're notified about open, unacknowledged issues, **each once**. An
+  issue is notified again only if it reopens.
+- An issue must have been open for `NOTIFY_AFTER_MINUTES` (default 60)
+  before it's sent. If it disappears before then (e.g. Intervals.icu links
+  the Strava copy of a fresh upload a little later), nothing is sent.
+- Everything ready in one run goes out as one message, grouped by
+  activity, with links.
+- On the first monitor run, every issue that is open and not acknowledged
+  counts as new, so you'll get one message with all of them. Acknowledge
+  the ones you accept first if you don't want that.
+- If syncing with Intervals.icu keeps failing for `HEALTH_ALERT_AFTER_HOURS`
+  (default 6) you get one warning, and one message when it works again.
+
+## Notifications
+
+Set `NOTIFIERS` in `.env` to one or more (comma separated) of:
+
+- **pushover**: create an application at https://pushover.net ("Create an
+  Application/API Token") and set `PUSHOVER_APP_TOKEN` and
+  `PUSHOVER_USER_KEY` (shown on your Pushover dashboard). Optional
+  `PUSHOVER_DEVICE` sends to one device only.
+- **discord**: a webhook on a channel. For a personal channel, create your
+  own server in Discord (Add a Server → Create My Own → For me and my
+  friends); only you are in it. Then channel settings → Integrations →
+  Webhooks → New Webhook, and put the URL in `DISCORD_WEBHOOK_URL`.
+- **console**: just prints the message (useful for testing).
+
+Check the setup with `python main.py notify-test`.
+
+To add another service (Slack, email, ntfy, ...), write a small `Notifier`
+subclass in `auditor/notifiers/` (a `name`, `from_env()` reading its
+settings, and `send()`) and register it in `auditor/notifiers/__init__.py`.
+
+## Logs
+
+- The log file is `data/logs/auditor.log` (rotated at 1 MB, 5 files kept),
+  at `LOG_LEVEL` (default `INFO`). INFO shows what each run did: sync
+  counts, removed activities, new/reopened/resolved issues, revoked
+  acknowledgments and notifications sent. DEBUG adds per-activity details
+  and HTTP calls; TRACE adds full Strava payloads.
+- On the console, `run`/`monitor`/`resync` show INFO by default, the other
+  commands only warnings. `-v` gives more (DEBUG, `-vv` TRACE), `-q` only
+  warnings and errors, and `--log-level LEVEL` sets console and file.
+- `python main.py status` shows the last runs and whether syncing is
+  currently failing; each run is also stored in the database.
+- Under launchd, `data/logs/launchd.log` only gets warnings, errors and
+  crashes.
+
+## Syncing
+
+Every run fetches the last `REFRESH_DAYS` (default 30) days. Once the last
+full sync is older than `FULL_SYNC_INTERVAL_HOURS` (default 24) it fetches
+the whole history instead; `resync` does that on demand.
+
+Activities that Intervals.icu no longer returns for the fetched range have
+been deleted there and are removed from the database, and their issues
+resolve. If a sync would remove more than half of the activities in the
+range at once (and more than 10), it removes nothing and logs a warning, in
+case the API returned an incomplete response. If you really did delete that
+many, run `python main.py resync --force`.
+
+A failed sync (network, Intervals.icu down) doesn't stop the run: the checks
+run on the stored data and the failure is logged.
 
 ## Strava enrichment
 
-Some cached activities are Strava-only "stub" records: Intervals.icu has a reference to
-them but can't return full data for them via its API (`"source": "STRAVA"`, no name,
-type, or duration -- just a timestamp). This commonly happens when the Strava-side
-activity has been cropped, split, or merged independently of the Garmin-recorded copy,
-which breaks the `strava_id` link Intervals.icu stores on the original activity.
+Some activities are Strava-only "stub" records: Intervals.icu has a
+reference to them but can't return full data for them via its API
+(`"source": "STRAVA"`, no name, type, or duration -- just a timestamp). This
+commonly happens when the Strava-side activity has been cropped, split, or
+merged independently of the Garmin-recorded copy, which breaks the
+`strava_id` link Intervals.icu stores on the original activity.
 
-`--enrich-strava` fetches full data for these stubs directly from the Strava API and
-writes it into the same local cache, so `duplicate_overlap` (and any other check) can
-work with the real thing instead of guessing from a single timestamp.
+When Strava credentials are set in `.env`, every run fetches the full data
+for new stubs directly from the Strava API, so the checks work with the real
+thing instead of a single timestamp. Each stub is looked up once: a
+successful fetch stores the data, and a confirmed 404 is recorded too, so
+it's never queried again. If Strava rate limits us, the run stops fetching
+there and the rest is picked up next time.
 
 One-time setup:
 
-1. Create a free app at https://www.strava.com/settings/api (Authorization Callback
-   Domain can just be `localhost`).
-2. Put the app's Client ID/Secret into `.env` as `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`.
-3. Run `python strava_auth_setup.py` and follow the prompts to authorize the app in your
-   browser. It prints a `STRAVA_REFRESH_TOKEN` to add to `.env`. This is a one-time step --
-   the refresh token doesn't expire unless you revoke the app's access on Strava.
+1. Create a free app at https://www.strava.com/settings/api (Authorization
+   Callback Domain can just be `localhost`).
+2. Put the app's Client ID/Secret into `.env` as `STRAVA_CLIENT_ID` /
+   `STRAVA_CLIENT_SECRET`.
+3. Run `python strava_auth_setup.py` and follow the prompts. It prints a
+   `STRAVA_REFRESH_TOKEN` to add to `.env`. The refresh token doesn't expire
+   unless you revoke the app's access on Strava.
 
-Then run:
+A resolved Strava record is never overwritten by Intervals.icu's
+placeholder on later syncs, but if Intervals.icu gets real data of its own
+for that activity (e.g. it's linked to a Garmin file), that update is used.
 
-```bash
-python main.py --offline --enrich-strava
-```
+`python main.py strava-export backup.json` / `strava-import backup.json`
+back up and restore the Strava-fetched data.
 
-Every stub is resolved once and remembered in the cache from then on -- a successful
-fetch fills in the real data, and a confirmed 404 (e.g. an activity long since deleted on
-Strava) is recorded too, so it's never queried again either. Repeat runs only ever fetch
-newly-appeared stubs, which keeps this well within Strava's API rate limits.
+## Data
 
-If Strava rate limits you mid-run, it stops there by default -- nothing already fetched is
-lost, and the remaining stubs are simply picked up next time. Add `--strava-auto-retry` to
-instead wait out Strava's `Retry-After` (repeating for as long as it keeps happening) and
-finish the run in one go, unattended.
+Everything lives in `data/` (set `DATA_DIR` to move it):
 
-Add `--strava-debug LEVEL` to see what's actually coming back from Strava as it happens,
-instead of only noticing bad data later in a check's output:
-
-- `--strava-debug 1` -- one timestamped summary line per activity (name/type/start/durations/distance).
-- `--strava-debug 2` -- also dumps the full raw Strava payload per activity. A lot of
-  output for a large run; redirect stdout to a file, e.g.
-  `python main.py --offline --enrich-strava --strava-debug 2 > strava_debug.log`.
-
-## Deleting activities / rebuilding the cache
-
-Deleting `intervals.sqlite` and resyncing has been the way to make the local cache
-reflect activities deleted in Intervals.icu, since `upsert_many` only ever inserts or
-updates and never removes a row on its own. Two ways to avoid losing Strava enrichment
-work when you do this:
-
-- **Preferred:** just run `python main.py --full-sync`. It now prunes any cached activity
-  missing from that full-history response, so deletions are picked up without ever
-  wiping the file -- Strava enrichment is untouched. Every sync (not just `--full-sync`)
-  also protects already-resolved Strava activities from being downgraded: Intervals.icu
-  always returns the exact same permanent placeholder for a Strava-only-linked activity
-  it can't fetch itself, so once we've backfilled one from Strava, a sync response that's
-  still just that placeholder is skipped rather than overwriting the real data. This
-  doesn't block genuine updates, though -- if Intervals.icu later has real data of its
-  own for that activity (e.g. it gets linked to a matching Garmin file), that update is
-  recognized as more than just the placeholder and is applied normally.
-- **If you do delete the file anyway** (a corrupted cache, wanting a truly clean slate):
-  run `python main.py --export-strava-cache strava_backup.json` first, delete
-  `intervals.sqlite`, do your normal full resync, then
-  `python main.py --import-strava-cache strava_backup.json` to restore the previously
-  resolved Strava records with no re-fetching.
-
-## Output
-
-Each run writes:
-
-- `output/findings.json` — canonical machine-readable output
-- `output/findings.csv` — spreadsheet/script-friendly output
-- `output/findings.md` — human-readable report with investigation links
+- `auditor.sqlite`: activities (including Strava data), issues and their
+  history, acknowledgments, and a log of runs. It's the application's own
+  database, not a cache: don't delete it to refresh data, syncing picks up
+  changes and deletions. Deleting it loses your acknowledgments and the
+  Strava data.
+- `logs/`: log files.
+- `auditor.lock`: prevents overlapping runs.
 
 ## Checks
 
-Configuration is in `checks.toml`. Personal, account-specific overrides (e.g.
-excluding one of your own activities from a check) go in an untracked
-`checks.local.toml` instead -- copy `checks.local.toml.example` to get started.
-Each section there is merged on top of the matching section in `checks.toml`,
-one level deep, so it never needs to touch the shared, tracked config.
+Configuration is in `checks.toml`. Personal, account-specific overrides
+(e.g. excluding one of your own activities from a check) go in an untracked
+`checks.local.toml` instead -- copy `checks.local.toml.example` to get
+started. Each section there is merged on top of the matching section in
+`checks.toml`, one level deep, so it never needs to touch the shared,
+tracked config.
+
+A normal run uses the enabled checks. Disabling a check resolves its open
+issues on the next run. `--only CHECK` runs specific checks, enabled or not,
+and leaves other checks' issues untouched.
 
 ### duplicate_overlap
 
-Enabled by default. It compares overlapping activities and reports the exact reasons, including:
+Enabled by default. It compares overlapping activities and reports the exact
+reasons, including:
 
 - overlap seconds
 - overlap percentage of the shorter activity
@@ -173,68 +281,98 @@ Enabled by default. It compares overlapping activities and reports the exact rea
 - start-time difference
 - duration difference
 
-It also flags a zero-duration activity (a Strava-only stub -- see "Strava enrichment"
-above -- that hasn't been resolved to real data) whose single timestamp falls inside
-another activity's time window (`point_in_time_within_activity`), even though there's no
-duration to compute a percentage from.
+It also flags a zero-duration activity (a Strava-only stub -- see "Strava
+enrichment" above -- that hasn't been resolved to real data) whose single
+timestamp falls inside another activity's time window
+(`point_in_time_within_activity`), even though there's no duration to
+compute a percentage from.
+
+Each overlapping pair gives one issue on each activity. `ignore_activities`
+(in `checks.local.toml`) skips any pair involving those activities.
 
 ### under_time_limit
 
-Enabled. Flags activities shorter than `maximum_duration_seconds` (see `checks.toml`).
+Enabled. Flags activities shorter than `maximum_duration_seconds` (see
+`checks.toml`).
 
-Run it standalone without touching `checks.toml`:
+### over_time_limit
 
-```bash
-python main.py --offline --check under_time_limit
-```
+Enabled. Flags activities longer than `maximum_duration_seconds` (24 hours
+by default), likely a tracker that was never stopped.
 
 ### garmin_link_only
 
-Enabled, but still under testing and development. API metadata can differ, so inspect cached `raw_json` and adapt `_is_garmin_only()` / `_strava_id_none()` in `checks/garmin_link_only.py` to match your data if the heuristic misfires.
+Enabled, but still under testing and development. API metadata can differ,
+so inspect stored `raw_json` and adapt `_is_garmin()` / `_strava_id_none()`
+in `auditor/checks/garmin_link_only.py` to match your data if the heuristic
+misfires.
 
 ### implausible_pace
 
-Enabled. Flags an activity whose average speed (`distance / moving_time`) falls outside
-a plausible range for its activity type -- usually a GPS glitch, a wrong activity type,
-or bad distance/duration data. Built-in per-type bounds live in
-`checks/implausible_pace.py` (`DEFAULT_SPEED_BOUNDS_KMH`); override or add a type via
-`[implausible_pace.speed_kmh_by_type]` in `checks.toml`. Types with no meaningful pace
-(`WeightTraining`, `Workout`, `Transition`, `Elliptical`, ...) are skipped automatically.
+Enabled. Flags an activity whose average speed (`distance / moving_time`)
+falls outside a plausible range for its activity type -- usually a GPS
+glitch, a wrong activity type, or bad distance/duration data. Built-in
+per-type bounds live in `auditor/checks/implausible_pace.py`
+(`DEFAULT_SPEED_BOUNDS_KMH`); override or add a type via
+`[implausible_pace.speed_kmh_by_type]` in `checks.toml`. Types with no
+meaningful pace (`WeightTraining`, `Workout`, `Transition`, `Elliptical`,
+...) are skipped automatically.
 
-Each bound is widened by `margin_kmh` (2.0 km/h by default) before anything is flagged,
-so a reading only a km/h or two past the line -- ordinary variation, not bad data -- is
-left alone. Lower `margin_kmh` in `checks.toml` for tighter sensitivity, or raise it if
-even the widened default still feels too eager.
+Each bound is widened by `margin_kmh` (2.0 km/h by default) before anything
+is flagged, so a reading only a km/h or two past the line -- ordinary
+variation, not bad data -- is left alone. Lower `margin_kmh` in
+`checks.toml` for tighter sensitivity, or raise it if even the widened
+default still feels too eager.
 
 ### missing_distance
 
 Enabled. Flags an outdoor-type activity (`Ride`, `Run`, `Hike`, ... -- see
-`outdoor_types` in `checks.toml`) with no recorded GPS distance, once it's run long
-enough (`minimum_moving_seconds`) that a missing distance is unlikely to be
-coincidental. Indoor trainer/treadmill sessions are always excluded regardless of type
-(`Activity.is_trainer` / `.is_indoor`) -- an indoor "Ride" legitimately has no GPS track,
-that's not a data problem.
+`outdoor_types` in `checks.toml`) with no recorded GPS distance, once it's
+run long enough (`minimum_moving_seconds`) that a missing distance is
+unlikely to be coincidental. Indoor trainer/treadmill sessions are always
+excluded regardless of type (`Activity.is_trainer` / `.is_indoor`) -- an
+indoor "Ride" legitimately has no GPS track, that's not a data problem.
 
 ### moving_elapsed_gap
 
-Disabled by default -- the "large elapsed/moving gap means unpaused stopped time" signal
-turned out to be mostly noise in practice (long hike/ski breaks and similar produce it
-legitimately), not a reliable indicator of bad data. It also covers a second, more
-useful case: a *negative* gap (moving time exceeding elapsed time, which shouldn't be
-possible) is always flagged at `medium` severity once it exceeds
-`negative_gap_tolerance_seconds`. The check is left in place for that case and for
-occasional manual use:
+Disabled by default -- the "large elapsed/moving gap means unpaused stopped
+time" signal turned out to be mostly noise in practice (long hike/ski breaks
+and similar produce it legitimately), not a reliable indicator of bad data.
+It also covers a second, more useful case: a *negative* gap (moving time
+exceeding elapsed time, which shouldn't be possible) is always flagged at
+`medium` severity once it exceeds `negative_gap_tolerance_seconds`. The
+check is left in place for that case and for occasional manual use:
 
 ```bash
-python main.py --offline --check moving_elapsed_gap
+python main.py --offline --only moving_elapsed_gap
 ```
 
-## Add a new check
+### Add a new check
 
-1. Create a class in `checks/`.
-2. Inherit from `ActivityCheck`.
-3. Implement `run(activities)`.
-4. Add it to `CHECKS` in `main.py`.
-5. Add configuration in `checks.toml`.
+1. Create a class in `auditor/checks/` inheriting `ActivityCheck`.
+2. Implement `run(activities)`, returning `self.issue(activity, ...)` for
+   each problem (pass `related=[...]` when it involves other activities).
+3. Register it in `CHECKS` in `auditor/checks/__init__.py`.
+4. Add its configuration (at least `enabled = true`) to `checks.toml`.
 
-All checks return the same finding structure, so new checks automatically appear in JSON, CSV, and Markdown reports.
+New checks automatically appear in the CLI, reports and notifications.
+
+## Code layout
+
+The code is layered so another interface (e.g. a web UI) can reuse
+everything below the CLI:
+
+- `auditor/cli/`: argument parsing and text output only.
+- `auditor/app.py`: wires settings, database, services and clients; any
+  interface creates an `App` and calls its services.
+- `auditor/services/`: sync, Strava enrichment, checks/issue tracking
+  (`audit`), acknowledgments, queries for views, runner and monitor. They
+  return result objects and log; they never print.
+- `auditor/views.py`: activity-centric read models (`ActivityView`,
+  `IssueView`) that the CLI, reports and notifications render.
+- `auditor/repositories.py`, `auditor/db.py`: SQLite access and schema
+  migrations.
+- `auditor/checks/`, `auditor/notifiers/`, `auditor/reporting/`,
+  `auditor/sources/` (API clients).
+
+Run the tests with `python -m unittest`.

@@ -13,7 +13,7 @@ maximum_duration_seconds = 100
 
 [garmin_link_only]
 enabled = true
-# The exact Garmin metadata field can be adapted in checks/garmin_link_only.py.
+# The exact Garmin metadata field can be adapted in auditor/checks/garmin_link_only.py.
 
 [over_time_limit]
 enabled = true
@@ -30,7 +30,7 @@ enabled = true
 margin_kmh = 2.0
 # Average-speed bounds (km/h) per activity type -- a value outside its range
 # (plus margin_kmh above) usually means a GPS glitch, a wrong activity type,
-# or bad distance/duration data. Built-in defaults (checks/implausible_pace.py)
+# or bad distance/duration data. Built-in defaults (auditor/checks/implausible_pace.py)
 # cover the types seen in this account already; only list a type below to
 # override its default. Types with no meaningful "pace" (WeightTraining,
 # Workout, Transition, Elliptical, ...) are skipped automatically -- no need
@@ -43,7 +43,7 @@ enabled = true
 minimum_moving_seconds = 60
 # Outdoor types expected to carry GPS distance. Indoor trainer/treadmill
 # sessions of these same types (Activity.is_trainer / .is_indoor) are always
-# excluded regardless of this list -- see checks/missing_distance.py.
+# excluded regardless of this list -- see auditor/checks/missing_distance.py.
 outdoor_types = ["Ride", "GravelRide", "MountainBikeRide", "Hike", "Run", "TrailRun", "Walk", "NordicSki", "AlpineSki", "OpenWaterSwim", "IceSkate"]
 
 [moving_elapsed_gap]
@@ -52,7 +52,7 @@ outdoor_types = ["Ride", "GravelRide", "MountainBikeRide", "Hike", "Run", "Trail
 # a useful indicator of bad data. The negative-gap case it also covers
 # (moving_time > elapsed_time, which is impossible) is a genuine data
 # integrity signal though, so the check itself is left in place -- run it
-# on demand with `--check moving_elapsed_gap` rather than every regular run.
+# on demand with `--only moving_elapsed_gap` rather than every regular run.
 enabled = false
 minimum_gap_percent = 30.0
 minimum_gap_seconds = 600
