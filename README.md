@@ -1,5 +1,5 @@
 Vibecoded application to assist me in cleaning up intervals.icu, garmin and strava.
-Fetches intervals.icu activities, enriches some activities from strava, runs through checks for these and prints the failed checks.
+Fetches intervals.icu activities, enriches some activities from strava, runs checks on every activity and keeps track of the issues it finds per activity. Issues can be acknowledged, and a scheduled monitor can notify about new ones.
 Failed checks must manually be fixed, the script is "read-only"
 
 # What I ended up doing to fix the failed checks.
@@ -25,6 +25,7 @@ Failed checks must manually be fixed, the script is "read-only"
 - https://www.fitfiletools.com/
   - Don't really like the section remover.
 - https://www.fitfileviewer.com/
+
 # Intervals Auditor
 
 A read-only Python tool for auditing Intervals.icu activities. It keeps a
@@ -118,7 +119,8 @@ Every run also writes `output/report.md`, `output/report.json` and
   durations, distance, type, source and Garmin/Strava links. If any of that
   changes (renames and Intervals.icu's re-analysis don't count), the
   acknowledgment is revoked and the issue reopens and is notified again.
-  Revoked acknowledgments are kept as history (`acks --all`).
+  The fields are listed in `intervals_auditor/fingerprint.py`. Revoked
+  acknowledgments are kept as history (`acks --all`).
 - Resolved issues and revoked acknowledgments are never deleted.
 
 `ignore_activities` in `checks.local.toml` (see Checks) still exists for
@@ -184,8 +186,10 @@ settings, and `send()`) and register it in `intervals_auditor/notifiers/__init__
   acknowledgments and notifications sent. DEBUG adds per-activity details
   and HTTP calls; TRACE adds full Strava payloads.
 - On the console, `run`/`monitor`/`resync` show INFO by default, the other
-  commands only warnings. `-v` gives more (DEBUG, `-vv` TRACE), `-q` only
-  warnings and errors, and `--log-level LEVEL` sets console and file.
+  commands only warnings. `-v` shows one level more (DEBUG for
+  `run`/`monitor`/`resync`, INFO for the others), `-vv` everything
+  including TRACE, `-q` only warnings and errors, and `--log-level LEVEL`
+  sets both console and log file.
 - `python main.py status` shows the last runs and whether syncing is
   currently failing; each run is also stored in the database.
 - Under launchd, `data/logs/launchd.log` only gets warnings, errors and
@@ -216,7 +220,7 @@ commonly happens when the Strava-side activity has been cropped, split, or
 merged independently of the Garmin-recorded copy, which breaks the
 `strava_id` link Intervals.icu stores on the original activity.
 
-When Strava credentials are set in `.env`, every run fetches the full data
+When Strava credentials are set in `.env`, every sync fetches the full data
 for new stubs directly from the Strava API, so the checks work with the real
 thing instead of a single timestamp. Each stub is looked up once: a
 successful fetch stores the data, and a confirmed 404 is recorded too, so
@@ -367,10 +371,14 @@ everything below the CLI:
 - `intervals_auditor/services/`: sync, Strava enrichment, checks/issue tracking
   (`audit`), acknowledgments, queries for views, runner and monitor. They
   return result objects and log; they never print.
+- `intervals_auditor/models.py`: the domain types (`Activity`, `Issue`,
+  `IssueRecord`, `Acknowledgment`).
 - `intervals_auditor/views.py`: activity-centric read models (`ActivityView`,
   `IssueView`) that the CLI, reports and notifications render.
-- `intervals_auditor/repositories.py`, `intervals_auditor/db.py`: SQLite access and schema
-  migrations.
+- `intervals_auditor/repositories.py`, `intervals_auditor/db.py`: SQLite
+  access and schema migrations (add a function to `MIGRATIONS` in `db.py`
+  to change the schema).
+- `intervals_auditor/config.py`: settings from `.env` and `checks.toml`.
 - `intervals_auditor/checks/`, `intervals_auditor/notifiers/`, `intervals_auditor/reporting/`,
   `intervals_auditor/sources/` (API clients).
 
