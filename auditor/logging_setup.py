@@ -47,7 +47,7 @@ def configure_logging(
     backup_count: int = 5,
 ) -> None:
     root = logging.getLogger("auditor")
-    root.handlers.clear()
+    reset_logging()
     root.propagate = False
     root.setLevel(min(console_level, file_level) if log_file else console_level)
 
@@ -64,3 +64,11 @@ def configure_logging(
         file_handler.setLevel(file_level)
         file_handler.setFormatter(logging.Formatter(FILE_FORMAT))
         root.addHandler(file_handler)
+
+
+def reset_logging() -> None:
+    """Close and remove the handlers configure_logging() added."""
+    root = logging.getLogger("auditor")
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+        handler.close()

@@ -1,4 +1,7 @@
 .env
+# Database, logs and lock file (DATA_DIR)
+data/
+# Pre-2.0 database location, kept until you delete it
 cache/*.sqlite
 output/*
 __pycache__/

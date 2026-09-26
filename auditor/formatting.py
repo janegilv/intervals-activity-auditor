@@ -26,7 +26,8 @@ def format_distance(meters: float | None) -> str:
 def activity_heading(activity: Activity | None, activity_id: str | None = None,
                      snapshot: dict | None = None) -> str:
     """One line identifying an activity: when, what, how long, how far.
-    Falls back to an acknowledgment's snapshot for a deleted activity."""
+    Can also render an acknowledgment's snapshot of the activity (e.g. when
+    it has since been deleted)."""
     if activity is not None:
         return (f"{activity.local_start} · {activity.activity_type or '?'} · {activity.name or '(no name)'} · "
                 f"{format_duration(activity.duration_seconds)} · {format_distance(activity.distance)}")
@@ -34,7 +35,7 @@ def activity_heading(activity: Activity | None, activity_id: str | None = None,
         start = (snapshot.get("start_local") or "")[:16].replace("T", " ") or "-"
         return (f"{start} · {snapshot.get('type') or '?'} · {snapshot.get('name') or '(no name)'} · "
                 f"{format_duration(snapshot.get('duration_seconds'))} · "
-                f"{format_distance(snapshot.get('distance'))} (deleted)")
+                f"{format_distance(snapshot.get('distance'))}")
     return f"{activity_id} (deleted)"
 
 
