@@ -92,6 +92,16 @@ class WebApiTest(unittest.TestCase):
         self.assertEqual(self.client.post("/api/acks", json={}).status_code, 422)
         self.assertEqual(self.client.post("/api/acks", json={"issues": ["x"]}).status_code, 422)
 
+    def test_changes_must_be_json(self):
+        # What another website could send cross-origin without a preflight.
+        for headers in ({"Content-Type": "text/plain"}, {"Content-Type": "application/x-www-form-urlencoded"}, {}):
+            r = self.client.post("/api/acks", content=b'{"issues": [3]}', headers=headers)
+            self.assertEqual(r.status_code, 415, headers)
+        self.assertEqual(self.issues()[3]["state"], "open")
+        r = self.client.post("/api/acks", content=b'{"issues": [3]}',
+                             headers={"Content-Type": "application/json; charset=utf-8"})
+        self.assertEqual(r.status_code, 200)
+
     def test_activity_detail(self):
         by_id = self.client.get("/api/activities/i103").json()
         by_issue = self.client.get("/api/activities/3").json()
