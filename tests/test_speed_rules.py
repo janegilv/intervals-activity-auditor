@@ -95,8 +95,23 @@ class StreamsTest(unittest.TestCase):
         data = api_streams([(600, 18, 0)])
         data[1]["data"] = [d + (500 if i >= 300 else 0) for i, d in enumerate(data[1]["data"])]
         parsed = st.parse_api(data)
-        self.assertEqual([(t, round(m)) for t, m in st.gps_jumps(parsed)], [(295, 525)])
+        self.assertEqual([(t, round(m), s) for t, m, s in st.gps_jumps(parsed)], [(295, 525, 5)])
         self.assertAlmostEqual(st.top_speed(parsed), 18, delta=0.1)  # the jump doesn't count
+
+    def test_gps_catching_up_after_losing_the_signal(self):
+        # Walking at 4 km/h, then 260 m in 15 s, then walking on.
+        walk = api_streams([(600, 4, 0), (15, 62, 0), (600, 4, 0)])
+        parsed = st.parse_api(walk)
+        self.assertEqual([(t, round(m), s) for t, m, s in st.gps_jumps(parsed)], [(600, 258, 15)])
+        self.assertLess(st.top_speed(parsed), 6)
+        hike = activity("i1", "Hike", distance=1600.0, moving_time=1215)
+        self.assertEqual(run_check([hike], {"i1": parsed}), {})
+        # Not a glitch: a bus ride (minutes), a sprint on a ride (not 5x faster),
+        # or the start of a fast descent (it goes on afterwards).
+        for segments in ([(600, 4, 0), (180, 45, 0), (600, 4, 0)],
+                         [(600, 25, 0), (20, 60, 0), (600, 25, 0)],
+                         [(600, 8, 5), (20, 60, -8), (600, 45, -4)]):
+            self.assertEqual(st.gps_jumps(st.parse_api(api_streams(segments))), [], segments)
 
     def test_interpolate(self):
         table = [[0, 60], [6, 30], [-8, 100]]

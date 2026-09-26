@@ -136,6 +136,14 @@ class Window(NamedTuple):
 # A step between two points faster than this is the GPS position jumping,
 # not movement.
 GPS_JUMP_KMH = 150.0
+# A short burst of speed out of nowhere is the position catching up after
+# the GPS signal comes back (e.g. 260 m in 17 s in the middle of a walk): at
+# most this long, at least this many times as fast as the minutes around it,
+# and at least this much faster.
+BURST_MAX_SECONDS = 30.0
+BURST_RATIO = 5.0
+BURST_MIN_EXCESS_KMH = 25.0
+BURST_CONTEXT_SECONDS = 120.0
 # Altitude changing faster than this (m/s) is the device correcting its
 # altitude (e.g. right after the start, or after losing the GPS signal),
 # not climbing or descending.
@@ -145,30 +153,74 @@ ALTITUDE_JUMP_M_PER_S = 5.0
 PAUSE_SECONDS = 60.0
 
 
-def gps_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[tuple[float, float]]:
-    """Where the position jumps: (seconds since the start, meters) per jump."""
+class Jump(NamedTuple):
+    first: int      # index of the point before the jump
+    last: int       # index of the point where it has landed
+    at: float       # seconds since the start
+    meters: float
+    seconds: float
+
+
+def find_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[Jump]:
+    """Where the GPS position jumps: single steps faster than `jump_kmh`, and
+    short bursts far faster than the minutes around them (see BURST_*)."""
     t, d = streams.time, streams.distance
-    jumps = []
-    for k in range(1, len(t)):
-        dt, dd = t[k] - t[k - 1], d[k] - d[k - 1]
-        if dt > 0 and dd / dt * 3.6 > jump_kmh:
-            jumps.append((t[k - 1], dd))
+    n = len(t)
+    # Speed of the step from point k-1 to k.
+    speeds = [0.0] + [max(0.0, d[k] - d[k - 1]) / (t[k] - t[k - 1]) * 3.6 if t[k] > t[k - 1] else 0.0
+                      for k in range(1, n)]
+
+    def average(t1: float, t2: float) -> float | None:  # km/h between two times
+        i, j = bisect_left(t, max(t1, t[0])), bisect_left(t, min(t2, t[-1]))
+        return (d[j] - d[i]) / (t[j] - t[i]) * 3.6 if j < n and t[j] > t[i] else None
+
+    jumps, k = [], 1
+    while k < n:
+        if speeds[k] < BURST_MIN_EXCESS_KMH:
+            k += 1
+            continue
+        end = k  # a run of fast steps: k .. end
+        while end + 1 < n and speeds[end + 1] >= BURST_MIN_EXCESS_KMH:
+            end += 1
+        first, last = k - 1, end
+        seconds = t[last] - t[first]
+        meters = d[last] - d[first]
+        around = [v for v in (average(t[first] - BURST_CONTEXT_SECONDS, t[first]),
+                              average(t[last], t[last] + BURST_CONTEXT_SECONDS)) if v is not None]
+        burst_speed = meters / seconds * 3.6 if seconds > 0 else 0.0
+        if (around and seconds <= BURST_MAX_SECONDS and burst_speed >= BURST_RATIO * max(around)
+                and burst_speed - max(around) >= BURST_MIN_EXCESS_KMH):
+            jumps.append(Jump(first, last, t[first], meters, seconds))
+        else:
+            jumps += [Jump(i - 1, i, t[i - 1], d[i] - d[i - 1], t[i] - t[i - 1])
+                      for i in range(k, end + 1) if speeds[i] > jump_kmh]
+        k = end + 1
     return jumps
+
+
+def gps_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[tuple[float, float, float]]:
+    """(seconds since the start, meters, over how many seconds) per GPS jump."""
+    return [(j.at, j.meters, j.seconds) for j in find_jumps(streams, jump_kmh)]
 
 
 def _distance_without_jumps(streams: Streams, jump_kmh: float) -> list[float]:
     """Cumulative distance where GPS jumps count as no distance (the real
     movement during a jump is unknown; leaving it out can't make anything
-    look too fast)."""
+    look too fast). Kept on the streams object, as several rules use it."""
+    cache = streams.__dict__.setdefault("_without_jumps", {})
+    if jump_kmh in cache:
+        return cache[jump_kmh]
     t, d = streams.time, streams.distance
+    in_jump = set()
+    for jump in find_jumps(streams, jump_kmh):
+        in_jump.update(range(jump.first + 1, jump.last + 1))
     clean = [0.0] * len(t)
-    cap = jump_kmh / 3.6
     for k in range(1, len(t)):
-        dt = t[k] - t[k - 1]
         dd = max(0.0, d[k] - d[k - 1])
-        if dt <= 0 or dd / dt > cap:
+        if t[k] <= t[k - 1] or k in in_jump:
             dd = 0.0
         clean[k] = clean[k - 1] + dd
+    cache[jump_kmh] = clean
     return clean
 
 

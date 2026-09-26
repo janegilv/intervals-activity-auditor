@@ -475,7 +475,12 @@ streams as `implausible_pace`, for the types in `activity_types`.
   seconds, e.g. 109.8 km/h recorded on a ride never faster than 52 km/h
   over 10 s.
 - **Jump**: the position leaps from one point to the next (faster than
-  150 km/h), with where it happens.
+  150 km/h), or catches up in a short burst when the GPS signal comes back
+  -- at most 30 seconds, at least 5 times (and 25 km/h) faster than the
+  two minutes before and after, e.g. 260 m in 17 s in the middle of a
+  hike. A bus ride or a real sprint lasts longer or isn't that much faster,
+  so it doesn't count as a jump. Jumps don't count as distance for
+  `implausible_pace`.
 
 The issue says where each glitch is (h:mm:ss from the start). If it's at
 the very start, cropping the activity usually fixes it; the activity then

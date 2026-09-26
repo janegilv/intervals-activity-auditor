@@ -115,7 +115,8 @@ class ImplausiblePaceCheck(ActivityCheck):
     def run(self, activities):
         issues = []
         for a in activities:
-            findings = [f for f in (self._average(a), self._max_speed(a), self._sustained(a)) if f]
+            streams = self.streams(a)  # stored time series, or None
+            findings = [f for f in (self._average(a), self._max_speed(a, streams), self._sustained(a, streams)) if f]
             if not findings:
                 continue
             severity = "high" if any(f[2] == "high" for f in findings) else "medium"
@@ -152,12 +153,11 @@ class ImplausiblePaceCheck(ActivityCheck):
             severity,
         )
 
-    def _max_speed(self, a):
+    def _max_speed(self, a, streams):
         limit = self.config.get("max_speed_kmh_by_type", DEFAULT_MAX_SPEED_KMH).get(a.activity_type)
         if not limit or a.is_trainer or a.is_indoor:
             return None
         recorded = float(a.raw.get("max_speed") or 0) * 3.6  # m/s, as recorded
-        streams = self.streams(a)
         if streams is not None:  # the fastest 10 s: a one-sample GPS spike doesn't count
             speed, over = top_speed(streams, TOP_SPEED_SECONDS), f" over {TOP_SPEED_SECONDS} s"
         else:
@@ -172,11 +172,10 @@ class ImplausiblePaceCheck(ActivityCheck):
             "high" if speed >= 2 * limit else "medium",
         )
 
-    def _sustained(self, a):
+    def _sustained(self, a, streams):
         table = _sustained_table(self.config).get(a.activity_type)
         if not table or a.is_trainer or a.is_indoor:
             return None
-        streams = self.streams(a)
         if streams is None:
             return None  # not fetched (yet), or none exist
         seconds = float(self.config.get("sustained_seconds", DEFAULT_SUSTAINED_SECONDS))

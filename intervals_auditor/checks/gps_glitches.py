@@ -5,7 +5,9 @@ Intervals.icu (or wherever the activity came from).
 - A spike: the top speed the device recorded is far above anything the
   recording holds for 10 seconds (e.g. 109.8 km/h recorded on a ride that
   was never faster than 52 km/h over 10 s).
-- A jump: the position leaps hundreds of meters from one point to the next.
+- A jump: the position leaps hundreds of meters from one point to the next,
+  or catches up in a short burst after the GPS signal comes back (e.g. 260 m
+  in 17 s in the middle of a walk).
 
 Both need the activity's streams, fetched from Intervals.icu for the types
 in activity_types. The issue says where each glitch is (h:mm:ss from the
@@ -64,14 +66,16 @@ class GpsGlitchesCheck(ActivityCheck):
 
             jumps = gps_jumps(streams)
             if jumps:
-                at, meters = max(jumps, key=lambda j: j[1])
+                at, meters, seconds = max(jumps, key=lambda j: j[1])
+                size = f"{meters:.0f} m" + (f" in {seconds:.0f} s" if seconds >= 10 else "")
                 if len(jumps) == 1:
-                    summaries.append(f"GPS jump of {meters:.0f} m at {clock(at)}")
+                    summaries.append(f"GPS jump of {size} at {clock(at)}")
                 else:
                     first = "" if jumps[0][0] == at else f" (the first at {clock(jumps[0][0])})"
-                    summaries.append(f"{len(jumps)} GPS jumps, the biggest {meters:.0f} m at {clock(at)}{first}")
+                    summaries.append(f"{len(jumps)} GPS jumps, the biggest {size} at {clock(at)}{first}")
                 details.append({"rule": "position_jump", "count": len(jumps),
-                                "jumps": [{"at": clock(t), "meters": round(m)} for t, m in jumps[:20]]})
+                                "jumps": [{"at": clock(t), "meters": round(m), "seconds": round(s)}
+                                          for t, m, s in jumps[:20]]})
 
             if summaries:
                 issues.append(self.issue(a, "; ".join(summaries), details, "info"))
