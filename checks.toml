@@ -36,6 +36,9 @@ margin_kmh = 2.0
 # Rule 3: the average speed over any stretch of this many seconds must not be
 # faster than sustained_speed_kmh_by_grade allows for the grade there.
 sustained_seconds = 60
+# Devices often settle their altitude in the first minutes; there only the
+# loosest limit of the table applies.
+grade_ignored_first_seconds = 300
 
 [implausible_pace.speed_kmh_by_type]
 Run = [3, 30]
@@ -52,9 +55,11 @@ OpenWaterSwim = [1, 8]
 IceSkate = [2, 45]
 VirtualRow = [2, 25]
 
-# Rule 2: the top speed the device recorded (km/h). A spike far above this
-# on foot is a GPS glitch or a ride in a vehicle. Indoor/trainer sessions
-# are skipped (their speed is virtual).
+# Rule 2: the top speed (km/h): the fastest 10 seconds when the activity's
+# streams are fetched (so a one-sample GPS spike doesn't count -- see
+# gps_glitches), otherwise the top speed the device recorded. Far above this
+# on foot is a ride in a vehicle. Indoor/trainer sessions are skipped (their
+# speed is virtual).
 [implausible_pace.max_speed_kmh_by_type]
 Walk = 20
 Hike = 20
@@ -74,8 +79,9 @@ IceSkate = 50
 # bus, train or lift ride inside an activity shows up on the climbs. Needs
 # the activity's streams, which are fetched from Intervals.icu for the types
 # listed here (STREAMS_PER_RUN per run, or all at once with fetch-streams).
-# Where the grade can't be told (no altitude), the highest speed in the
-# table applies.
+# GPS jumps and sudden altitude jumps (over 5 m/s) are left out. Where the
+# grade can't be told (no altitude, or the first grade_ignored_first_seconds),
+# the highest speed in the table applies.
 [implausible_pace.sustained_speed_kmh_by_grade]
 Ride = [[-8, 100], [-4, 80], [0, 60], [3, 42], [6, 32], [10, 24], [15, 18]]
 GravelRide = [[-8, 100], [-4, 80], [0, 60], [3, 42], [6, 32], [10, 24], [15, 18]]
@@ -85,6 +91,18 @@ Run = [[-10, 30], [0, 26], [5, 20], [10, 16], [20, 11], [30, 8]]
 TrailRun = [[-10, 30], [0, 26], [5, 20], [10, 16], [20, 11], [30, 8]]
 Walk = [[-15, 22], [0, 18], [10, 12], [20, 9], [30, 7]]
 Hike = [[-15, 22], [0, 18], [10, 12], [20, 9], [30, 7]]
+
+[gps_glitches]
+enabled = true
+# GPS glitches: not real speed, but bad data you may want to crop. Reported
+# at "info" level with where they are (h:mm:ss from the start):
+# - a spike: the recorded top speed is at least spike_margin_kmh above the
+#   fastest the recording holds for 10 seconds;
+# - a jump: the position leaps from one point to the next (faster than
+#   150 km/h).
+# Needs the activity's streams, fetched from Intervals.icu for these types.
+activity_types = ["Ride", "GravelRide", "MountainBikeRide", "EBikeRide", "Run", "TrailRun", "Walk", "Hike"]
+spike_margin_kmh = 15
 
 [missing_distance]
 enabled = true

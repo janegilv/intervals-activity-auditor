@@ -91,6 +91,13 @@ class StreamsTest(unittest.TestCase):
         worst = max(w.speed_kmh for w in st.windows(st.parse_api(glitch), 60))
         self.assertLess(worst, 25)
 
+    def test_gps_jumps_and_top_speed(self):
+        data = api_streams([(600, 18, 0)])
+        data[1]["data"] = [d + (500 if i >= 300 else 0) for i, d in enumerate(data[1]["data"])]
+        parsed = st.parse_api(data)
+        self.assertEqual([(t, round(m)) for t, m in st.gps_jumps(parsed)], [(295, 525)])
+        self.assertAlmostEqual(st.top_speed(parsed), 18, delta=0.1)  # the jump doesn't count
+
     def test_interpolate(self):
         table = [[0, 60], [6, 30], [-8, 100]]
         self.assertEqual(st.interpolate(table, 3), 45)
@@ -113,6 +120,29 @@ class SpeedRulesTest(unittest.TestCase):
         self.assertEqual(run_check([run])["i1"].summary,
                          "Average speed (40.0 km/h) is implausibly above the expected range for Run "
                          "(3-30 km/h, ±2 km/h margin)")
+
+    def test_top_speed_is_the_fastest_ten_seconds(self):
+        # The device recorded 108 km/h for a moment, but the recording never
+        # moved faster than 5 km/h: a one-sample spike, not speed.
+        hike = activity("i1", "Hike", max_speed=30.0, distance=833.0, moving_time=600)
+        self.assertEqual(run_check([hike], {"i1": st.parse_api(api_streams([(600, 5, 0)]))}), {})
+        self.assertIn("Top speed 108.0 km/h", run_check([hike])["i1"].summary)  # no streams: as recorded
+        bus = st.parse_api(api_streams([(600, 5, 0), (120, 45, 0), (600, 5, 0)]))
+        hike = activity("i1", "Hike", max_speed=30.0, distance=3000.0, moving_time=1320)
+        self.assertIn("Top speed over 10 s 45.0 km/h", run_check([hike], {"i1": bus})["i1"].summary)
+
+    def test_altitude_jumps_and_the_start_dont_count_as_climbing(self):
+        ride = activity("i1")
+        # The device corrects its altitude by 40 m at once, 20 minutes in.
+        jump = api_streams([(1200, 30, 0), (1200, 30, 0)])
+        jump[2]["data"] = [a + (40 if i > 1200 else 0) for i, a in enumerate(jump[2]["data"])]
+        self.assertEqual(run_check([ride], {"i1": st.parse_api(jump)}), {})
+        # A steady "climb" at 30 km/h counts after the first 5 minutes, not before.
+        start = st.parse_api(api_streams([(240, 30, 8), (1200, 25, 0)]))
+        self.assertEqual(run_check([ride], {"i1": start}), {})
+        later = st.parse_api(api_streams([(900, 25, 0), (240, 30, 8), (600, 25, 0)]))
+        self.assertIn("at +8% grade", run_check([ride], {"i1": later})["i1"].summary)
+        self.assertIn("i1", run_check([ride], {"i1": start}, config={"grade_ignored_first_seconds": 0}))
 
     def test_car_uphill_is_found_fast_descent_is_not(self):
         ride = activity("i1")
@@ -143,7 +173,7 @@ class SpeedRulesTest(unittest.TestCase):
 
     def test_all_findings_in_one_issue(self):
         ride = activity("i1", max_speed=33.0)
-        streams = st.parse_api(api_streams([(600, 25, 0), (180, 50, 6)]))
+        streams = st.parse_api(api_streams([(600, 25, 0), (180, 50, 6), (20, 110, -8), (120, 25, 0)]))
         issue = run_check([ride], {"i1": streams})["i1"]
         self.assertEqual([d["rule"] for d in issue.details], ["max_speed_above_limit", "sustained_speed_above_limit"])
         self.assertEqual(issue.summary.count(";"), 1)
@@ -175,6 +205,36 @@ class SpeedRulesTest(unittest.TestCase):
             svc.update("implausible_pace", {"sustained_speed_kmh_by_grade": {"Ride": "fast"}})
         svc.update("implausible_pace", {"max_speed_kmh_by_type": {"Hike": 25, "Walk": 20}})
         self.assertEqual(svc.effective()["implausible_pace"]["max_speed_kmh_by_type"]["Hike"], 25)
+
+
+class GpsGlitchesTest(unittest.TestCase):
+    def run_check(self, activities, streams_by_id, config=None):
+        from intervals_auditor.checks.gps_glitches import GpsGlitchesCheck
+        check = GpsGlitchesCheck(config or {}, streams=lambda a: streams_by_id.get(a.id))
+        return {i.activity_id: i for i in check.run(activities)}
+
+    def test_spike_and_jumps(self):
+        smooth = st.parse_api(api_streams([(3600, 25, 0)]))
+        spiky = activity("i1", max_speed=30.5)            # 109.8 km/h recorded
+        normal = activity("i2", max_speed=7.5)             # 27 km/h recorded
+        jumps = api_streams([(3600, 25, 0)])
+        jumps[1]["data"] = [d + (400 if i >= 600 else 0) + (300 if i >= 1800 else 0)
+                            for i, d in enumerate(jumps[1]["data"])]
+        found = self.run_check([spiky, normal, activity("i3", max_speed=7.5)],
+                               {"i1": smooth, "i2": smooth, "i3": st.parse_api(jumps)})
+        self.assertEqual(sorted(found), ["i1", "i3"])
+        self.assertEqual(found["i1"].summary,
+                         "GPS spike: recorded top speed 109.8 km/h, but never faster than 25 km/h over 10 s")
+        self.assertEqual(found["i1"].severity, "info")
+        self.assertEqual(found["i3"].summary, "2 GPS jumps, the biggest 435 m at 0:09:55")
+        self.assertEqual([j["at"] for j in found["i3"].details[0]["jumps"]], ["0:09:55", "0:29:55"])
+
+    def test_skips_trainer_other_types_and_missing_streams(self):
+        smooth = st.parse_api(api_streams([(600, 25, 0)]))
+        acts = [activity("i1", max_speed=30.0, trainer=True), activity("i2", "NordicSki", max_speed=30.0),
+                activity("i3", max_speed=30.0)]
+        self.assertEqual(self.run_check(acts, {"i1": smooth, "i2": smooth}), {})
+        self.assertEqual(self.run_check(acts, {"i3": smooth}, {"spike_margin_kmh": 200}), {})
 
 
 class FakeStreamsClient:

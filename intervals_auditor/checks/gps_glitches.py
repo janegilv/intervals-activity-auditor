@@ -1,0 +1,78 @@
+"""GPS glitches in a recording: not you going too fast, but bad data that
+skews top speeds and records -- and that you may want to crop in
+Intervals.icu (or wherever the activity came from).
+
+- A spike: the top speed the device recorded is far above anything the
+  recording holds for 10 seconds (e.g. 109.8 km/h recorded on a ride that
+  was never faster than 52 km/h over 10 s).
+- A jump: the position leaps hundreds of meters from one point to the next.
+
+Both need the activity's streams, fetched from Intervals.icu for the types
+in activity_types. The issue says where each glitch is (h:mm:ss from the
+start), which is what you need to crop it. Indoor/trainer sessions are
+skipped.
+"""
+from intervals_auditor.streams import clock, gps_jumps, top_speed
+
+from .base import ActivityCheck
+
+DEFAULT_ACTIVITY_TYPES = ["Ride", "GravelRide", "MountainBikeRide", "EBikeRide", "Run", "TrailRun", "Walk", "Hike"]
+DEFAULT_SPIKE_MARGIN_KMH = 15
+HELD_SECONDS = 10
+
+
+class GpsGlitchesCheck(ActivityCheck):
+    name = "gps_glitches"
+    description = (
+        "Finds GPS glitches in the recording: a recorded top speed far above anything held for "
+        "10 seconds (a one-sample spike), or the position jumping hundreds of meters at once. "
+        "Bad data rather than real speed; crop it if you want it gone."
+    )
+
+    @classmethod
+    def stream_activity_types(cls, config: dict) -> set[str]:
+        return set(config.get("activity_types", DEFAULT_ACTIVITY_TYPES))
+
+    @classmethod
+    def validate_config(cls, config: dict) -> None:
+        types = config.get("activity_types", DEFAULT_ACTIVITY_TYPES)
+        if not isinstance(types, list) or not all(isinstance(t, str) for t in types):
+            raise ValueError("activity_types must be a list of activity types")
+        margin = config.get("spike_margin_kmh", DEFAULT_SPIKE_MARGIN_KMH)
+        if isinstance(margin, bool) or not isinstance(margin, (int, float)) or margin <= 0:
+            raise ValueError("spike_margin_kmh must be a number above 0")
+
+    def run(self, activities):
+        types = self.stream_activity_types(self.config)
+        margin = float(self.config.get("spike_margin_kmh", DEFAULT_SPIKE_MARGIN_KMH))
+        issues = []
+        for a in activities:
+            if a.activity_type not in types or a.is_trainer or a.is_indoor:
+                continue
+            streams = self.streams(a)
+            if streams is None:
+                continue
+            summaries, details = [], []
+
+            recorded = float(a.raw.get("max_speed") or 0) * 3.6
+            held = top_speed(streams, HELD_SECONDS)
+            if recorded and held is not None and recorded - held >= margin:
+                summaries.append(f"GPS spike: recorded top speed {recorded:.1f} km/h, but never faster than "
+                                 f"{held:.0f} km/h over {HELD_SECONDS} s")
+                details.append({"rule": "speed_spike", "recorded_max_speed_kmh": round(recorded, 1),
+                                "top_speed_over_10s_kmh": round(held, 1)})
+
+            jumps = gps_jumps(streams)
+            if jumps:
+                at, meters = max(jumps, key=lambda j: j[1])
+                if len(jumps) == 1:
+                    summaries.append(f"GPS jump of {meters:.0f} m at {clock(at)}")
+                else:
+                    first = "" if jumps[0][0] == at else f" (the first at {clock(jumps[0][0])})"
+                    summaries.append(f"{len(jumps)} GPS jumps, the biggest {meters:.0f} m at {clock(at)}{first}")
+                details.append({"rule": "position_jump", "count": len(jumps),
+                                "jumps": [{"at": clock(t), "meters": round(m)} for t, m in jumps[:20]]})
+
+            if summaries:
+                issues.append(self.issue(a, "; ".join(summaries), details, "info"))
+        return issues

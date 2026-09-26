@@ -3,6 +3,7 @@ ActivityCheck in this package, register it here, and configure it in
 checks.toml."""
 from .duplicate_overlap import DuplicateOverlapCheck
 from .garmin_link_only import GarminLinkOnlyCheck
+from .gps_glitches import GpsGlitchesCheck
 from .implausible_pace import ImplausiblePaceCheck
 from .missing_distance import MissingDistanceCheck
 from .moving_elapsed_gap import MovingElapsedGapCheck
@@ -17,6 +18,7 @@ CHECKS = {
         OverTimeLimitCheck,
         GarminLinkOnlyCheck,
         ImplausiblePaceCheck,
+        GpsGlitchesCheck,
         MissingDistanceCheck,
         MovingElapsedGapCheck,
     )

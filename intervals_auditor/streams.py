@@ -133,34 +133,92 @@ class Window(NamedTuple):
     grade_percent: float | None  # average grade, None when unknown
 
 
-def windows(streams: Streams, seconds: float, *, glitch_kmh: float = 150.0,
+# A step between two points faster than this is the GPS position jumping,
+# not movement.
+GPS_JUMP_KMH = 150.0
+# Altitude changing faster than this (m/s) is the device correcting its
+# altitude (e.g. right after the start, or after losing the GPS signal),
+# not climbing or descending.
+ALTITUDE_JUMP_M_PER_S = 5.0
+
+
+def gps_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[tuple[float, float]]:
+    """Where the position jumps: (seconds since the start, meters) per jump."""
+    t, d = streams.time, streams.distance
+    jumps = []
+    for k in range(1, len(t)):
+        dt, dd = t[k] - t[k - 1], d[k] - d[k - 1]
+        if dt > 0 and dd / dt * 3.6 > jump_kmh:
+            jumps.append((t[k - 1], dd))
+    return jumps
+
+
+def _distance_without_jumps(streams: Streams, jump_kmh: float) -> list[float]:
+    """Cumulative distance where GPS jumps count as no distance (the real
+    movement during a jump is unknown; leaving it out can't make anything
+    look too fast)."""
+    t, d = streams.time, streams.distance
+    clean = [0.0] * len(t)
+    cap = jump_kmh / 3.6
+    for k in range(1, len(t)):
+        dt = t[k] - t[k - 1]
+        dd = max(0.0, d[k] - d[k - 1])
+        if dt <= 0 or dd / dt > cap:
+            dd = 0.0
+        clean[k] = clean[k - 1] + dd
+    return clean
+
+
+def _altitude_without_jumps(t: list[float], altitude: list[float], max_rate: float) -> list[float]:
+    out = [altitude[0]]
+    for k in range(1, len(altitude)):
+        dt, da = t[k] - t[k - 1], altitude[k] - altitude[k - 1]
+        if dt <= 0 or abs(da) / dt > max_rate:
+            da = 0.0
+        out.append(out[-1] + da)
+    return out
+
+
+def top_speed(streams: Streams, seconds: float = 10.0, jump_kmh: float = GPS_JUMP_KMH) -> float | None:
+    """The fastest average speed (km/h) held over `seconds`, GPS jumps left out."""
+    t = streams.time
+    clean = _distance_without_jumps(streams, jump_kmh)
+    best, j = None, 1
+    for i in range(len(t) - 1):
+        if j <= i:
+            j = i + 1
+        while j < len(t) and t[j] - t[i] < seconds:
+            j += 1
+        if j >= len(t):
+            break
+        speed = (clean[j] - clean[i]) / (t[j] - t[i]) * 3.6
+        best = speed if best is None or speed > best else best
+    return best
+
+
+def windows(streams: Streams, seconds: float, *, jump_kmh: float = GPS_JUMP_KMH,
+            altitude_jump_rate: float = ALTITUDE_JUMP_M_PER_S, grade_after_seconds: float = 0.0,
             grade_min_distance_m: float = 200.0, smooth_seconds: float = 30.0) -> Iterator[Window]:
     """Every stretch of (at least) `seconds` through the activity, with its
     average speed and grade.
 
-    - Steps faster than `glitch_kmh` are GPS jumps, not movement: they count
-      at that speed at most, so one bad point can't make a whole minute look
-      fast.
-    - Altitude is smoothed over `smooth_seconds` first, and the grade is only
-      given for stretches of at least `grade_min_distance_m` -- over a short
+    - GPS jumps (steps faster than `jump_kmh`) count as no distance, so a bad
+      point can't make a whole minute look fast.
+    - Altitude jumps (faster than `altitude_jump_rate` m/s) don't count as
+      climbing, and stretches starting in the first `grade_after_seconds`
+      get no grade, as devices often settle their altitude after the start.
+    - Altitude is smoothed over `smooth_seconds`, and the grade is only given
+      for stretches of at least `grade_min_distance_m` -- over a short
       distance, a few meters of altitude noise would be a steep "grade".
     """
-    t, d = streams.time, streams.distance
+    t = streams.time
     n = len(t)
     if n < 2:
         return
-    # Distance with GPS jumps capped.
-    clean = [0.0] * n
-    cap = glitch_kmh / 3.6
-    for k in range(1, n):
-        dt = t[k] - t[k - 1]
-        dd = max(0.0, d[k] - d[k - 1])
-        if dt <= 0:
-            dd = 0.0
-        elif dd / dt > cap:
-            dd = cap * dt
-        clean[k] = clean[k - 1] + dd
-    altitude = _smooth(t, streams.altitude, smooth_seconds) if streams.altitude is not None else None
+    clean = _distance_without_jumps(streams, jump_kmh)
+    altitude = None
+    if streams.altitude is not None:
+        altitude = _smooth(t, _altitude_without_jumps(t, streams.altitude, altitude_jump_rate), smooth_seconds)
 
     j = 1
     min_distance = grade_min_distance_m
@@ -174,7 +232,7 @@ def windows(streams: Streams, seconds: float, *, glitch_kmh: float = 150.0,
             return
         distance = clean[j] - clean[i]
         grade = None
-        if altitude is not None and distance >= min_distance:
+        if altitude is not None and distance >= min_distance and ti >= grade_after_seconds:
             grade = (altitude[j] - altitude[i]) / distance * 100
             grade = 40.0 if grade > 40.0 else -40.0 if grade < -40.0 else grade
         yield Window(ti, t[j], distance / (t[j] - ti) * 3.6, grade)

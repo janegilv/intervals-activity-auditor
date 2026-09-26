@@ -421,8 +421,10 @@ used as it is: a type that isn't listed isn't checked by that rule.
   `margin_kmh` (2.0) first, so a reading a km/h or two past the line --
   ordinary variation, not bad data -- is left alone.
 - **Top speed** above `max_speed_kmh_by_type` (e.g. 20 km/h for Hike and
-  Walk, 100 for Ride). This is the max speed the device recorded; on foot, a
-  spike far above it is a GPS glitch or a ride in a vehicle.
+  Walk, 100 for Ride): the fastest 10 seconds of the activity's streams (see
+  below), so a one-sample GPS spike doesn't count -- `gps_glitches` reports
+  those. Without streams, the top speed the device recorded. On foot, far
+  above the limit means a ride in a vehicle.
 - **Sustained speed for the grade**: the average speed over any
   `sustained_seconds` (60) must not be faster than
   `sustained_speed_kmh_by_grade` allows for the grade there. The table has
@@ -431,9 +433,11 @@ used as it is: a type that isn't listed isn't checked by that rule.
   24 at +10%), so a car, bus or lift ride inside a ride or hike shows up on
   the climbs. The issue says how fast, at what grade and where in the
   activity (h:mm:ss from the start), and for how long it was too fast.
-  Where the grade can't be told (no altitude), the table's highest speed
-  applies. GPS jumps count at 150 km/h at most, so a single bad point can't
-  make a whole minute look fast.
+  GPS jumps don't count as distance, and sudden altitude jumps (over 5 m/s,
+  the device correcting itself) don't count as climbing. Devices often
+  settle their altitude in the first minutes, so for the first
+  `grade_ignored_first_seconds` (300) -- and wherever there's no altitude --
+  only the table's highest speed applies.
 
 Top speed and sustained speed skip indoor and trainer sessions (their speed
 is virtual). All findings on one activity make one issue.
@@ -456,6 +460,25 @@ page); the streams are then fetched again and the activity re-checked. `python m
 Status page) shows how many are stored and waiting. Activities that came
 from Strava have no streams on Intervals.icu, so only their summary is
 checked.
+
+### gps_glitches
+
+Enabled, at "info" level. Finds GPS glitches: not you going too fast, but
+bad data that skews top speeds and records, and that you may want to crop
+in Intervals.icu (or wherever the activity came from). Uses the same
+streams as `implausible_pace`, for the types in `activity_types`.
+
+- **Spike**: the top speed the device recorded is at least
+  `spike_margin_kmh` (15) above the fastest the recording holds for 10
+  seconds, e.g. 109.8 km/h recorded on a ride never faster than 52 km/h
+  over 10 s.
+- **Jump**: the position leaps from one point to the next (faster than
+  150 km/h), with where it happens.
+
+The issue says where each glitch is (h:mm:ss from the start). If it's at
+the very start, cropping the activity usually fixes it; the activity then
+changes, its streams are fetched again and the issue resolves. If you don't
+care about glitches, acknowledge the issues or turn the check off.
 
 ### missing_distance
 

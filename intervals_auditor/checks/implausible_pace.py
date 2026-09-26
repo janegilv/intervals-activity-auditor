@@ -6,18 +6,24 @@ that isn't in a table isn't checked by that rule):
 
 - average speed outside a plausible range (speed_kmh_by_type, widened by
   margin_kmh);
-- a recorded top speed above what's plausible (max_speed_kmh_by_type);
+- a top speed above what's plausible (max_speed_kmh_by_type): the fastest
+  10 seconds when the activity's streams are there, so a one-sample GPS
+  spike doesn't count (the gps_glitches check reports those), otherwise the
+  top speed the device recorded;
 - a sustained speed over sustained_seconds that's too fast for the grade
   at that point (sustained_speed_kmh_by_grade). Going downhill you can be
   as fast as a car, uphill you can't -- so this is what finds a car or lift
   ride inside a ride or hike. It needs the activity's streams (time series),
-  which are fetched from Intervals.icu for these types.
+  which are fetched from Intervals.icu for these types. GPS jumps and
+  sudden altitude jumps are left out, and in the first
+  grade_ignored_first_seconds only the table's loosest limit applies, as
+  devices often settle their altitude after the start.
 
 Indoor and trainer sessions are skipped by the top-speed and sustained
 rules (their speed is virtual). All findings on one activity make one issue.
 """
 from intervals_auditor import derivation
-from intervals_auditor.streams import Interpolator, clock, windows
+from intervals_auditor.streams import Interpolator, clock, top_speed, windows
 
 from .base import ActivityCheck
 
@@ -55,6 +61,9 @@ DEFAULT_SUSTAINED_SPEED_KMH_BY_GRADE = {
     "Hike": [[-15, 22], [0, 18], [10, 12], [20, 9], [30, 7]],
 }
 DEFAULT_SUSTAINED_SECONDS = 60
+DEFAULT_GRADE_IGNORED_FIRST_SECONDS = 300
+# The top speed rule looks at the fastest this many seconds (with streams).
+TOP_SPEED_SECONDS = 10
 
 
 def _sustained_table(config: dict) -> dict:
@@ -98,6 +107,10 @@ class ImplausiblePaceCheck(ActivityCheck):
         number(config.get("sustained_seconds", DEFAULT_SUSTAINED_SECONDS), "sustained_seconds")
         if config.get("sustained_seconds", DEFAULT_SUSTAINED_SECONDS) < 10:
             raise ValueError("sustained_seconds must be at least 10")
+        ignored = config.get("grade_ignored_first_seconds", DEFAULT_GRADE_IGNORED_FIRST_SECONDS)
+        number(ignored, "grade_ignored_first_seconds")
+        if ignored < 0:
+            raise ValueError("grade_ignored_first_seconds can't be negative")
 
     def run(self, activities):
         issues = []
@@ -141,15 +154,20 @@ class ImplausiblePaceCheck(ActivityCheck):
 
     def _max_speed(self, a):
         limit = self.config.get("max_speed_kmh_by_type", DEFAULT_MAX_SPEED_KMH).get(a.activity_type)
-        max_speed = a.raw.get("max_speed")  # m/s, as recorded
-        if not limit or not max_speed or a.is_trainer or a.is_indoor:
+        if not limit or a.is_trainer or a.is_indoor:
             return None
-        speed = float(max_speed) * 3.6
-        if speed <= limit:
+        recorded = float(a.raw.get("max_speed") or 0) * 3.6  # m/s, as recorded
+        streams = self.streams(a)
+        if streams is not None:  # the fastest 10 s: a one-sample GPS spike doesn't count
+            speed, over = top_speed(streams, TOP_SPEED_SECONDS), f" over {TOP_SPEED_SECONDS} s"
+        else:
+            speed, over = recorded, ""
+        if not speed or speed <= limit:
             return None
         return (
-            f"Top speed {speed:.1f} km/h is more than is plausible for {a.activity_type} ({limit:g} km/h)",
+            f"Top speed{over} {speed:.1f} km/h is more than is plausible for {a.activity_type} ({limit:g} km/h)",
             {"rule": "max_speed_above_limit", "max_speed_kmh": round(speed, 1), "limit_kmh": limit,
+             "recorded_max_speed_kmh": round(recorded, 1), "from_streams": streams is not None,
              "activity_type": a.activity_type},
             "high" if speed >= 2 * limit else "medium",
         )
@@ -167,11 +185,12 @@ class ImplausiblePaceCheck(ActivityCheck):
         # Each window stands for the time until the next one starts (a few
         # seconds); adding those up for the too-fast windows gives about how
         # long it was too fast. "From" is the middle of the first such window.
-        ws = list(windows(streams, seconds))
+        ignored = float(self.config.get("grade_ignored_first_seconds", DEFAULT_GRADE_IGNORED_FIRST_SECONDS))
+        ws = list(windows(streams, seconds, grade_after_seconds=ignored))
         worst, first, too_fast_seconds = None, None, 0.0
         for index, w in enumerate(ws):
-            # Without a trustworthy grade (no altitude, or too short a stretch)
-            # only the most generous limit in the table applies.
+            # Without a trustworthy grade (no altitude, the first minutes, or
+            # too short a stretch) only the most generous limit applies.
             limit = limit_at(w.grade_percent) if w.grade_percent is not None else loosest
             if w.speed_kmh <= limit:
                 continue

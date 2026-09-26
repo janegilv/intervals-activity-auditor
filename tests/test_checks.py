@@ -60,7 +60,7 @@ class SingleActivityChecksTest(unittest.TestCase):
     def test_registry(self):
         self.assertEqual(set(CHECKS), {
             "duplicate_overlap", "under_time_limit", "over_time_limit", "garmin_link_only",
-            "implausible_pace", "missing_distance", "moving_elapsed_gap",
+            "implausible_pace", "gps_glitches", "missing_distance", "moving_elapsed_gap",
         })
 
 
