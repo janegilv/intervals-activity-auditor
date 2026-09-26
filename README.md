@@ -74,6 +74,7 @@ last 30 days, plus the whole history once a day.
 
 ```bash
 python main.py                       # sync, run all checks, list open issues per activity
+./main.py                            # the same (main.py is executable)
 python main.py --offline             # same, using stored data only (no API calls)
 python main.py --only missing_distance   # run just one check (also works for disabled checks)
 

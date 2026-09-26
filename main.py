@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Intervals auditor: audits Intervals.icu activities. Run `python main.py --help` for commands."""
 import sys
 
