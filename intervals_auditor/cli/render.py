@@ -1,14 +1,48 @@
 """Plain-text rendering for the CLI. Kept simple on purpose; iterate here."""
+import sys
+
 from intervals_auditor.formatting import activity_heading, format_details
 from intervals_auditor.models import Acknowledgment, activity_url
 from intervals_auditor.services.queries import ActivityDetail, StatusInfo
 from intervals_auditor.services.runner import RunResult
 from intervals_auditor.timeutil import format_local
-from intervals_auditor.views import OPEN, RESOLVED, ActivityView, IssueView
+from intervals_auditor.views import ACKNOWLEDGED, OPEN, RESOLVED, ActivityView, IssueView
 
 
 def _plural(n: int, one: str, many: str) -> str:
     return f"{n} {one if n == 1 else many}"
+
+
+def cli_prefix() -> str:
+    """How the tool was started (`python main.py` or `./main.py`), so the
+    commands we suggest can be copied as-is."""
+    argv0 = sys.argv[0] if sys.argv and sys.argv[0] else ""
+    if argv0.endswith("main.py"):
+        return argv0 if argv0.startswith(("./", "/")) else f"python {argv0}"
+    return "python main.py"
+
+
+def _commands(rows: list[tuple[str, str]]) -> list[str]:
+    """Align suggested commands with their explanations."""
+    width = max(len(cmd) for cmd, _ in rows)
+    return [f"  {cmd.ljust(width)}   {what}" for cmd, what in rows]
+
+
+def next_steps(views: list[ActivityView]) -> str:
+    """How to act on a list of open issues, using the first activity as the example."""
+    if not views or not views[0].issues:
+        return ""
+    p, example = cli_prefix(), views[0]
+    aid, check = example.activity_id, example.issues[0].check
+    lines = ["To look at an activity or acknowledge its issues, use the id shown under it, e.g.:"]
+    lines += _commands([
+        (f"{p} show {aid}", "details, history and links"),
+        (f'{p} ack {aid} -n "why it\'s fine"', "acknowledge all its open issues"),
+        (f'{p} ack {aid} --check {check} -n "..."', "acknowledge only one check's issue"),
+    ])
+    lines.append("Acknowledged issues are hidden until the activity changes.")
+    lines.append(f"See them with `{p} issues --all`; undo with `{p} unack <id>`.")
+    return "\n".join(lines)
 
 
 def issue_line(issue: IssueView, *, with_state: bool = False) -> str:
@@ -24,7 +58,7 @@ def ack_line(ack: Acknowledgment) -> str:
 def activity_views(views: list[ActivityView]) -> str:
     blocks = []
     for view in views:
-        lines = [activity_heading(view.activity, view.activity_id), f"  {view.activity_id}  {view.url}"]
+        lines = [activity_heading(view.activity, view.activity_id), f"  id {view.activity_id}  {view.url}"]
         for issue in view.issues:
             lines.append(f"  {issue_line(issue)}")
             if issue.ack is not None:
@@ -82,6 +116,18 @@ def activity_detail(detail: ActivityDetail) -> str:
         lines.append("  none")
     for ack in detail.acks:
         lines.append("  " + ack_summary(ack))
+
+    p, aid = cli_prefix(), detail.activity_id
+    rows = []
+    open_checks = sorted({i.check for i in detail.issues if i.state == OPEN})
+    if open_checks:
+        rows.append((f'{p} ack {aid} -n "why it\'s fine"', "acknowledge all its open issues"))
+        if len(open_checks) > 1:
+            rows.append((f'{p} ack {aid} --check {open_checks[0]} -n "..."', "acknowledge only one check's issue"))
+    if any(i.state == ACKNOWLEDGED for i in detail.issues):
+        rows.append((f"{p} unack {aid}", "report its acknowledged issues again"))
+    if rows:
+        lines += ["", "Next:"] + _commands(rows)
     return "\n".join(lines)
 
 

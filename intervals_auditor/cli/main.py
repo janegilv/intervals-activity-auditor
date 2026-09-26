@@ -50,8 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="(run) Run only this check (even if disabled); repeatable.")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    def command(name, help_text):
-        p = sub.add_parser(name, help=help_text, description=help_text)
+    def command(name, help_text, epilog=None):
+        p = sub.add_parser(name, help=help_text, description=help_text, epilog=epilog,
+                           formatter_class=argparse.RawDescriptionHelpFormatter)
         add_common(p, suppress=True)
         return p
 
@@ -71,7 +72,16 @@ def build_parser() -> argparse.ArgumentParser:
     p = command("show", "Everything about one activity: issues (incl. history) and acknowledgments.")
     p.add_argument("activity_id")
 
-    p = command("ack", "Acknowledge the open issues on an activity so they're no longer reported.")
+    p = command("ack", "Acknowledge the open issues on an activity so they're no longer reported.", epilog="""\
+examples:
+  main.py ack i123456789 -n "two real sessions"
+  main.py ack i123456789 --check garmin_link_only -n "no Strava copy on purpose"
+  main.py ack i123456789 --only-this -n "..."   leave the other half of a duplicate pair alone
+
+The activity id is shown under each activity in the `run` and `issues`
+output ("id i123456789"; Strava-only activities have a plain number).
+Acknowledged issues stay hidden until the activity changes; list them with
+`issues --all` or `acks`, and undo with `unack`.""")
     p.add_argument("activity_id")
     p.add_argument("-n", "--note", default="", help="Why this is fine (stored with the acknowledgment).")
     p.add_argument("--check", choices=list(CHECKS), help="Only acknowledge this check's issue(s).")
@@ -79,7 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Don't also acknowledge the mirrored issue on related activities (e.g. the other "
                         "half of a duplicate pair).")
 
-    p = command("unack", "Revoke acknowledgments on an activity; its issues are reported again.")
+    p = command("unack", "Revoke acknowledgments on an activity; its issues are reported again.", epilog="""\
+examples:
+  main.py unack i123456789
+  main.py unack i123456789 --check duplicate_overlap""")
     p.add_argument("activity_id")
     p.add_argument("--check", choices=list(CHECKS), help="Only this check's acknowledgment(s).")
     p.add_argument("--only-this", action="store_true", help="Leave related activities' acknowledgments alone.")
@@ -137,6 +150,9 @@ def cmd_run(app: App, args) -> int:
     print(render.issues_summary(views))
     if result.report_paths:
         print(f"Reports: {result.report_paths[0].parent}/report.{{md,json,csv}}")
+    if views:
+        print()
+        print(render.next_steps(views))
     return 1 if result.sync_error else 0
 
 
@@ -163,6 +179,10 @@ def cmd_issues(app: App, args) -> int:
         print(render.activity_views(views))
         print()
     print(render.issues_summary(views, acknowledged_hidden=hidden))
+    open_views = [v for v in views if v.issues_in(OPEN)]
+    if open_views:
+        print()
+        print(render.next_steps(open_views))
     return 0
 
 
@@ -184,6 +204,8 @@ def cmd_ack(app: App, args) -> int:
         return 0
     print(f"Acknowledged {len(created)} issue(s):")
     print(render.acks_list(created))
+    print()
+    print(f"They're hidden until an activity involved changes. Undo with: {render.cli_prefix()} unack {args.activity_id}")
     return 0
 
 
