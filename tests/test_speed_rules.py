@@ -19,8 +19,9 @@ from tests.helpers import FakeClock, Repos, payload
 GPS = {"stream_types": ["time", "distance", "altitude", "latlng"], "analyzed": "2026-09-20T10:00:00Z"}
 
 
-def api_streams(segments, start_altitude=100.0):
-    """Intervals.icu-style streams at 1 s from (seconds, km/h, grade %) segments."""
+def api_streams(segments, start_altitude=100.0, positions=False):
+    """Intervals.icu-style streams at 1 s from (seconds, km/h, grade %) segments
+    (heading north from 60°N 5°E when there are positions)."""
     time, distance, altitude = [0], [0.0], [start_altitude]
     for seconds, kmh, grade in segments:
         for _ in range(seconds):
@@ -28,8 +29,24 @@ def api_streams(segments, start_altitude=100.0):
             time.append(time[-1] + 1)
             distance.append(distance[-1] + step)
             altitude.append(altitude[-1] + step * grade / 100)
-    return [{"type": "time", "data": time}, {"type": "distance", "data": distance},
-            {"type": "altitude", "data": altitude}]
+    streams = [{"type": "time", "data": time}, {"type": "distance", "data": distance},
+               {"type": "altitude", "data": altitude}]
+    if positions:
+        streams.append({"type": "latlng", "data": [60 + m / METERS_PER_DEGREE for m in distance],
+                        "data2": [5.0] * len(distance)})
+    return streams
+
+
+METERS_PER_DEGREE = 111195.0
+
+
+def spike(streams, at, meters):
+    """The position flies `meters` east at second `at` and comes back."""
+    by_type = {s["type"]: s for s in streams}
+    by_type["latlng"]["data2"][at] += meters / (METERS_PER_DEGREE * 0.5)  # a degree east is ~half as long at 60°N
+    by_type["distance"]["data"] = [d + (meters if i == at else 2 * meters if i > at else 0)
+                                   for i, d in enumerate(by_type["distance"]["data"])]
+    return streams
 
 
 def activity(activity_id="i1", type_="Ride", **extra):
@@ -97,6 +114,33 @@ class StreamsTest(unittest.TestCase):
         parsed = st.parse_api(data)
         self.assertEqual([(t, round(m), s) for t, m, s in st.gps_jumps(parsed)], [(295, 525, 5)])
         self.assertAlmostEqual(st.top_speed(parsed), 18, delta=0.1)  # the jump doesn't count
+
+    def test_positions_are_stored(self):
+        parsed = st.parse_api(api_streams([(60, 20, 0)], positions=True))
+        again = st.decode(st.encode(parsed))
+        self.assertEqual(len(again.lat), len(again.time))
+        self.assertAlmostEqual(st.meters_between(again.lat[0], again.lng[0], again.lat[-1], again.lng[-1]),
+                               parsed.distance[-1], delta=2)
+        pairs = st.parse_api({"time": [0, 5, 10], "distance": [0, 10, 20], "latlng": [None, [60.0, 5.0], [60.0001, 5.0]]})
+        self.assertEqual(pairs.lat, [60.0, 60.0, 60.0001])  # before the first fix: the first fix
+        odd = st.parse_api([{"type": "time", "data": [0, 5]}, {"type": "distance", "data": [0, 9]},
+                            {"type": "latlng", "data": "?"}])
+        self.assertIsNone(odd.lat)  # positions not understood: still usable without them
+
+    def test_spike_out_and_back_on_a_ride(self):
+        # Riding 30 km/h, the position flies 150 m off and back: 4.6x faster for
+        # a moment -- not enough to tell from speed alone, but the positions show it.
+        data = spike(api_streams([(600, 30, 0)], positions=True), 300, 150)
+        glitches = st.find_jumps(st.parse_api(data))
+        self.assertEqual([(g.kind, g.at, round(g.meters - g.straight)) for g in glitches], [("spike", 295, 300)])
+        without_positions = st.parse_api([x for x in data if x["type"] != "latlng"])
+        self.assertEqual(st.find_jumps(without_positions), [])
+        self.assertAlmostEqual(st.top_speed(st.parse_api(data)), 30, delta=0.5)  # the spike's detour doesn't count
+        # Turning around at the same speed is not a spike.
+        u_turn = api_streams([(300, 30, 0)], positions=True)
+        lat = u_turn[3]["data"]
+        u_turn[3]["data"] = lat[:150] + [lat[150] - (x - lat[150]) for x in lat[150:]]
+        self.assertEqual(st.find_jumps(st.parse_api(u_turn)), [])
 
     def test_gps_catching_up_after_losing_the_signal(self):
         # Walking at 4 km/h, then 260 m in 15 s, then walking on.
@@ -258,6 +302,15 @@ class GpsGlitchesTest(unittest.TestCase):
         self.assertEqual(self.run_check(acts, {"i3": smooth}, {"spike_margin_kmh": 200}), {})
 
 
+class GpsGlitchesSummaryTest(unittest.TestCase):
+    def test_spikes_are_reported_apart_from_jumps(self):
+        from intervals_auditor.checks.gps_glitches import GpsGlitchesCheck
+        data = spike(spike(api_streams([(3600, 30, 0)], positions=True), 600, 150), 2400, 250)
+        issue = GpsGlitchesCheck({}, streams=lambda a: st.parse_api(data)).run([activity("i1", max_speed=8.5)])[0]
+        self.assertEqual(issue.summary, "2 GPS spikes out and back, the biggest +500 m at 0:39:55 (the first at 0:09:55)")
+        self.assertEqual(issue.details[0]["rule"], "position_spike")
+
+
 class FakeStreamsClient:
     def __init__(self, streams=None):
         self.streams = streams or {}
@@ -314,14 +367,14 @@ class StreamServiceTest(unittest.TestCase):
 
     def test_turning_on_elevation_correction_fetches_it(self):
         self.svc.fetch({"Ride"})
-        self.assertEqual(self.client.types["i1"], ("time", "distance", "altitude"))
+        self.assertEqual(self.client.types["i1"], ("time", "distance", "altitude", "latlng"))
         self.assertEqual(st.version_of(self.r.activities.get("i1")),
-                         f"{self.r.activities.get('i1').fingerprint}|{GPS['analyzed']}")  # unchanged format
+                         f"{self.r.activities.get('i1').fingerprint}|{GPS['analyzed']}|positions")
         self.r.add(payload("i1", start="2026-09-20T07:00:00", use_elevation_correction=True,
                            **{**GPS, "stream_types": GPS["stream_types"] + ["fixed_altitude"]}))
         self.assertEqual([a.id for a in self.svc.pending({"Ride"})], ["i1"])
         self.svc.fetch({"Ride"})
-        self.assertEqual(self.client.types["i1"], ("time", "distance", "altitude", "fixed_altitude"))
+        self.assertEqual(self.client.types["i1"], ("time", "distance", "altitude", "latlng", "fixed_altitude"))
 
     def test_unexpected_responses_are_retried(self):
         self.client.streams["i6"] = {"message": "something else"}

@@ -5,6 +5,9 @@ Intervals.icu (or wherever the activity came from).
 - A spike: the top speed the device recorded is far above anything the
   recording holds for 10 seconds (e.g. 109.8 km/h recorded on a ride that
   was never faster than 52 km/h over 10 s).
+- A spike out and back: the position flies off and comes back within
+  seconds, adding distance far beyond the straight line from before to
+  after it (needs GPS positions).
 - A jump: the position leaps hundreds of meters from one point to the next,
   or catches up in a short burst after the GPS signal comes back (e.g. 260 m
   in 17 s in the middle of a walk).
@@ -14,7 +17,7 @@ in activity_types. The issue says where each glitch is (h:mm:ss from the
 start), which is what you need to crop it. Indoor/trainer sessions are
 skipped.
 """
-from intervals_auditor.streams import clock, gps_jumps, top_speed
+from intervals_auditor.streams import clock, find_jumps, top_speed
 
 from .base import ActivityCheck
 
@@ -64,18 +67,32 @@ class GpsGlitchesCheck(ActivityCheck):
                 details.append({"rule": "speed_spike", "recorded_max_speed_kmh": round(recorded, 1),
                                 "top_speed_over_10s_kmh": round(held, 1)})
 
-            jumps = gps_jumps(streams)
-            if jumps:
-                at, meters, seconds = max(jumps, key=lambda j: j[1])
-                size = f"{meters:.0f} m" + (f" in {seconds:.0f} s" if seconds >= 10 else "")
-                if len(jumps) == 1:
-                    summaries.append(f"GPS jump of {size} at {clock(at)}")
+            glitches = find_jumps(streams)
+            spikes = [g for g in glitches if g.kind == "spike"]
+            if spikes:
+                extra = lambda g: g.meters - (g.straight or 0.0)
+                biggest = max(spikes, key=extra)
+                if len(spikes) == 1:
+                    summaries.append(f"GPS spike out and back (+{extra(biggest):.0f} m) at {clock(biggest.at)}")
                 else:
-                    first = "" if jumps[0][0] == at else f" (the first at {clock(jumps[0][0])})"
-                    summaries.append(f"{len(jumps)} GPS jumps, the biggest {size} at {clock(at)}{first}")
+                    first = "" if spikes[0] is biggest else f" (the first at {clock(spikes[0].at)})"
+                    summaries.append(f"{len(spikes)} GPS spikes out and back, the biggest +{extra(biggest):.0f} m "
+                                     f"at {clock(biggest.at)}{first}")
+                details.append({"rule": "position_spike", "count": len(spikes),
+                                "spikes": [{"at": clock(g.at), "extra_meters": round(extra(g)),
+                                            "seconds": round(g.seconds)} for g in spikes[:20]]})
+            jumps = [g for g in glitches if g.kind == "jump"]
+            if jumps:
+                biggest = max(jumps, key=lambda g: g.meters)
+                size = f"{biggest.meters:.0f} m" + (f" in {biggest.seconds:.0f} s" if biggest.seconds >= 10 else "")
+                if len(jumps) == 1:
+                    summaries.append(f"GPS jump of {size} at {clock(biggest.at)}")
+                else:
+                    first = "" if jumps[0] is biggest else f" (the first at {clock(jumps[0].at)})"
+                    summaries.append(f"{len(jumps)} GPS jumps, the biggest {size} at {clock(biggest.at)}{first}")
                 details.append({"rule": "position_jump", "count": len(jumps),
-                                "jumps": [{"at": clock(t), "meters": round(m), "seconds": round(s)}
-                                          for t, m, s in jumps[:20]]})
+                                "jumps": [{"at": clock(g.at), "meters": round(g.meters), "seconds": round(g.seconds)}
+                                          for g in jumps[:20]]})
 
             if summaries:
                 issues.append(self.issue(a, "; ".join(summaries), details, "info"))

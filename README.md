@@ -356,7 +356,7 @@ Everything lives in `data/` (set `DATA_DIR` to move it):
 
 The database also holds the activity streams the checks need (see
 `implausible_pace`), thinned to a point every 5 seconds and compressed:
-roughly 10 kB per activity.
+roughly 15 kB per activity.
 
 ## Checks
 
@@ -444,10 +444,10 @@ used as it is: a type that isn't listed isn't checked by that rule.
 Top speed and sustained speed skip indoor and trainer sessions (their speed
 is virtual). All findings on one activity make one issue.
 
-The sustained rule needs each activity's **streams** (time, distance and
-altitude over the activity), which the summary Intervals.icu lists doesn't
-have. They're fetched separately for the types in
-`sustained_speed_kmh_by_grade`, one request per activity: new activities
+The sustained rule (and `gps_glitches`) needs each activity's **streams**
+(time, distance, altitude and GPS position over the activity), which the
+summary Intervals.icu lists doesn't have. They're fetched separately for
+the types in `sustained_speed_kmh_by_grade`, one request per activity: new activities
 right away, the rest of the history at most `STREAMS_PER_RUN` (100) per
 run, newest first -- or all at once with `python main.py fetch-streams`
 (then `python main.py run --offline` to check them). An activity is fetched
@@ -474,6 +474,11 @@ streams as `implausible_pace`, for the types in `activity_types`.
   `spike_margin_kmh` (15) above the fastest the recording holds for 10
   seconds, e.g. 109.8 km/h recorded on a ride never faster than 52 km/h
   over 10 s.
+- **Spike out and back**: the position flies off and comes back within
+  seconds. Over the few points around it, the watch adds far more distance
+  (at least 100 m, and twice as much) than the straight line from before
+  to after it. This works at any speed, also on a bike, and the detour
+  counts as that straight line for `implausible_pace`.
 - **Jump**: the position leaps from one point to the next (faster than
   150 km/h), or catches up in a short burst when the GPS signal comes back
   -- at most 30 seconds, at least 5 times (and 25 km/h) faster than the

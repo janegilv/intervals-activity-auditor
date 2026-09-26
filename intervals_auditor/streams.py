@@ -1,19 +1,25 @@
 """Activity streams: the time series recorded during an activity (time,
-distance, altitude), fetched from Intervals.icu for the checks that need
-more than the activity summary -- e.g. how fast you went uphill.
+distance, altitude and GPS position), fetched from Intervals.icu for the
+checks that need more than the activity summary -- e.g. how fast you went
+uphill, or whether the GPS position jumped.
 
 Streams are thinned to a point every few seconds and stored compressed
 (a couple of kB per hour), so checks can be re-run with other settings
 without fetching anything again.
 """
 import json
+import math
 import zlib
 from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Iterator, NamedTuple
 
-# What's fetched and stored.
+# What's fetched and stored (plus "latlng" when the activity has GPS positions).
 STREAM_TYPES = ("time", "distance", "altitude")
+POSITIONS = "latlng"
+# Part of every stored version: changing what's stored makes everything be
+# fetched again.
+STORED_FORMAT = "positions"
 # The elevation Intervals.icu corrected from terrain data ("Fixed Alt" in its
 # charts) when elevation correction is turned on for the activity -- used
 # instead of the device's altitude then.
@@ -32,6 +38,8 @@ class Streams:
     time: list[float]              # seconds since the start (pauses leave gaps)
     distance: list[float]          # meters, cumulative
     altitude: list[float] | None   # meters, None when the activity has no altitude
+    lat: list[float] | None = None  # GPS position, None when there's none
+    lng: list[float] | None = None
 
     def __len__(self) -> int:
         return len(self.time)
@@ -43,7 +51,12 @@ def uses_corrected_altitude(activity) -> bool:
 
 def stream_types_for(activity) -> tuple[str, ...]:
     """The streams to fetch for an activity."""
-    return STREAM_TYPES + ((CORRECTED_ALTITUDE,) if uses_corrected_altitude(activity) else ())
+    types = STREAM_TYPES
+    if POSITIONS in (activity.raw.get("stream_types") or []):
+        types += (POSITIONS,)
+    if uses_corrected_altitude(activity):
+        types += (CORRECTED_ALTITUDE,)
+    return types
 
 
 def version_of(activity) -> str:
@@ -51,7 +64,7 @@ def version_of(activity) -> str:
     when the activity changes (fingerprint), Intervals.icu re-analyses it
     (e.g. after trimming it) or elevation correction is turned on or off,
     which calls for fetching the streams again."""
-    version = f"{activity.fingerprint or ''}|{activity.raw.get('analyzed') or ''}"
+    version = f"{activity.fingerprint or ''}|{activity.raw.get('analyzed') or ''}|{STORED_FORMAT}"
     return version + ("|corrected-altitude" if uses_corrected_altitude(activity) else "")
 
 
@@ -68,7 +81,7 @@ def parse_api(payload) -> Streams | None:
     elif isinstance(payload, list):
         if not all(isinstance(s, dict) and "type" in s for s in payload):
             raise UnknownStreamsFormat("unexpected streams response: a list, but not of {type, data} objects")
-        by_type = {s["type"]: s.get("data") for s in payload}
+        by_type = {s["type"]: (s if s["type"] == POSITIONS else s.get("data")) for s in payload}
     else:
         raise UnknownStreamsFormat(f"unexpected streams response of type {type(payload).__name__}")
     time, distance = by_type.get("time"), by_type.get("distance")
@@ -77,10 +90,11 @@ def parse_api(payload) -> Streams | None:
         altitude = by_type.get("altitude")
     if not time or not distance:
         return None
+    positions = _positions(by_type.get(POSITIONS))
     n = min(len(time), len(distance))
     has_altitude = bool(altitude) and any(v is not None for v in altitude)
-    t_out, d_out, a_out = [], [], []
-    last_altitude = None
+    t_out, d_out, a_out, p_out = [], [], [], []
+    last_altitude = last_position = None
     for i in range(n):
         t, d = time[i], distance[i]
         if t is None or d is None:
@@ -90,12 +104,47 @@ def parse_api(payload) -> Streams | None:
             last_altitude = a if a is not None else last_altitude
             if last_altitude is None:
                 continue  # no altitude yet at the very start
+        if positions is not None:
+            position = positions[i] if i < len(positions) else None
+            last_position = position or last_position
         t_out.append(float(t))
         d_out.append(float(d))
         a_out.append(last_altitude)
+        p_out.append(last_position)
     if len(t_out) < 2:
         return None
-    return decimate(Streams(t_out, d_out, a_out if has_altitude else None))
+    lat = lng = None
+    first_fix = next((p for p in p_out if p is not None), None)
+    if first_fix is not None:  # before the first fix, use the first fix
+        p_out = [p or first_fix for p in p_out]
+        lat, lng = [p[0] for p in p_out], [p[1] for p in p_out]
+    return decimate(Streams(t_out, d_out, a_out if has_altitude else None, lat, lng))
+
+
+def _positions(stream) -> list[tuple[float, float] | None] | None:
+    """GPS positions from the latlng stream: Intervals.icu gives latitudes in
+    "data" and longitudes in "data2"; [lat, lng] pairs are accepted too.
+    None if it's missing or not understood (positions are optional)."""
+    if isinstance(stream, dict):
+        lat, lng = stream.get("data"), stream.get("data2")
+        if isinstance(lat, list) and isinstance(lng, list):
+            pairs = list(zip(lat, lng))
+        else:
+            pairs = lat
+    else:
+        pairs = stream
+    if not isinstance(pairs, list) or not pairs:
+        return None
+    out = []
+    for p in pairs:
+        if (isinstance(p, (list, tuple)) and len(p) == 2 and all(isinstance(v, (int, float)) for v in p)
+                and (p[0], p[1]) != (0, 0)):
+            out.append((float(p[0]), float(p[1])))
+        elif p is None or isinstance(p, (list, tuple)):
+            out.append(None)
+        else:
+            return None
+    return out if any(out) else None
 
 
 def decimate(streams: Streams, min_step: float = MIN_STEP_SECONDS) -> Streams:
@@ -107,7 +156,8 @@ def decimate(streams: Streams, min_step: float = MIN_STEP_SECONDS) -> Streams:
     if keep[-1] != len(streams.time) - 1:
         keep.append(len(streams.time) - 1)
     pick = lambda values: [values[i] for i in keep] if values is not None else None
-    return Streams(pick(streams.time), pick(streams.distance), pick(streams.altitude))
+    return Streams(pick(streams.time), pick(streams.distance), pick(streams.altitude),
+                   pick(streams.lat), pick(streams.lng))
 
 
 def encode(streams: Streams) -> bytes:
@@ -115,13 +165,15 @@ def encode(streams: Streams) -> bytes:
         "time": [round(t) for t in streams.time],
         "distance": [round(d, 1) for d in streams.distance],
         "altitude": [round(a, 1) for a in streams.altitude] if streams.altitude is not None else None,
+        "lat": [round(v, 5) for v in streams.lat] if streams.lat is not None else None,
+        "lng": [round(v, 5) for v in streams.lng] if streams.lng is not None else None,
     }
     return zlib.compress(json.dumps(data, separators=(",", ":")).encode("utf-8"), 9)
 
 
 def decode(blob: bytes) -> Streams:
     data = json.loads(zlib.decompress(blob).decode("utf-8"))
-    return Streams(data["time"], data["distance"], data.get("altitude"))
+    return Streams(data["time"], data["distance"], data.get("altitude"), data.get("lat"), data.get("lng"))
 
 
 # --- analysis -------------------------------------------------------------
@@ -136,14 +188,23 @@ class Window(NamedTuple):
 # A step between two points faster than this is the GPS position jumping,
 # not movement.
 GPS_JUMP_KMH = 150.0
-# A short burst of speed out of nowhere is the position catching up after
-# the GPS signal comes back (e.g. 260 m in 17 s in the middle of a walk): at
-# most this long, at least this many times as fast as the minutes around it,
-# and at least this much faster.
+# Steps at least this many times (and BURST_MIN_EXCESS_KMH) faster than the
+# two minutes around them are looked at more closely; a stretch of them
+# lasting at most BURST_MAX_SECONDS is a GPS glitch when
+# - the GPS positions show it went out and came back (a spike): the watch
+#   added at least SPIKE_MIN_EXTRA_M and SPIKE_PATH_RATIO times more
+#   distance than the straight line from before to after it; or
+# - it's at least BURST_RATIO times faster than around it: the position
+#   catching up after the GPS signal comes back (e.g. 260 m in 17 s in the
+#   middle of a walk). A bus ride lasts longer, a sprint isn't that much
+#   faster.
+CANDIDATE_RATIO = 2.0
 BURST_MAX_SECONDS = 30.0
 BURST_RATIO = 5.0
 BURST_MIN_EXCESS_KMH = 25.0
 BURST_CONTEXT_SECONDS = 120.0
+SPIKE_MIN_EXTRA_M = 100.0
+SPIKE_PATH_RATIO = 2.0
 # Altitude changing faster than this (m/s) is the device correcting its
 # altitude (e.g. right after the start, or after losing the GPS signal),
 # not climbing or descending.
@@ -154,71 +215,120 @@ PAUSE_SECONDS = 60.0
 
 
 class Jump(NamedTuple):
-    first: int      # index of the point before the jump
-    last: int       # index of the point where it has landed
+    first: int      # index of the point before the glitch
+    last: int       # index of the point after it
     at: float       # seconds since the start
-    meters: float
+    meters: float   # distance the watch added
     seconds: float
+    kind: str       # "spike" (out and back) or "jump" (the position leaps ahead)
+    straight: float | None = None  # straight-line meters from before to after, if positions are known
+
+
+def meters_between(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance in meters."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2)
+    return 2 * 6371000 * math.asin(min(1.0, math.sqrt(a)))
 
 
 def find_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[Jump]:
-    """Where the GPS position jumps: single steps faster than `jump_kmh`, and
-    short bursts far faster than the minutes around them (see BURST_*)."""
+    """Where the GPS position glitches: spikes out and back (needs positions),
+    the position catching up in a short burst, and single steps faster than
+    `jump_kmh`. See the constants above."""
+    cache = streams.__dict__.setdefault("_jumps", {})
+    if jump_kmh in cache:
+        return cache[jump_kmh]
     t, d = streams.time, streams.distance
     n = len(t)
+    positions = streams.lat is not None and streams.lng is not None
     # Speed of the step from point k-1 to k.
     speeds = [0.0] + [max(0.0, d[k] - d[k - 1]) / (t[k] - t[k - 1]) * 3.6 if t[k] > t[k - 1] else 0.0
                       for k in range(1, n)]
+    # Average speed (km/h) in the minutes before and after each point.
+    before, after = [0.0] * n, [0.0] * n
+    j = 0
+    for i in range(n):
+        while t[j] < t[i] - BURST_CONTEXT_SECONDS:
+            j += 1
+        before[i] = (d[i] - d[j]) / (t[i] - t[j]) * 3.6 if t[i] > t[j] else 0.0
+    j = 0
+    for i in range(n):
+        j = max(j, i)
+        while j + 1 < n and t[j + 1] <= t[i] + BURST_CONTEXT_SECONDS:
+            j += 1
+        after[i] = (d[j] - d[i]) / (t[j] - t[i]) * 3.6 if t[j] > t[i] else 0.0
 
-    def average(t1: float, t2: float) -> float | None:  # km/h between two times
-        i, j = bisect_left(t, max(t1, t[0])), bisect_left(t, min(t2, t[-1]))
-        return (d[j] - d[i]) / (t[j] - t[i]) * 3.6 if j < n and t[j] > t[i] else None
+    def around(first: int, last: int) -> float:  # km/h in the minutes before and after
+        return max(before[first], after[last])
+
+    def candidate(k: int) -> bool:
+        v = speeds[k]
+        if v > jump_kmh:
+            return True
+        return v >= BURST_MIN_EXCESS_KMH and v >= CANDIDATE_RATIO * around(k - 1, k)
 
     jumps, k = [], 1
     while k < n:
-        if speeds[k] < BURST_MIN_EXCESS_KMH:
+        if speeds[k] < BURST_MIN_EXCESS_KMH or not candidate(k):
             k += 1
             continue
-        end = k  # a run of fast steps: k .. end
-        while end + 1 < n and speeds[end + 1] >= BURST_MIN_EXCESS_KMH:
+        end = k  # a stretch of suspicious steps: k .. end
+        while end + 1 < n and speeds[end + 1] >= BURST_MIN_EXCESS_KMH and candidate(end + 1):
             end += 1
         first, last = k - 1, end
-        seconds = t[last] - t[first]
-        meters = d[last] - d[first]
-        around = [v for v in (average(t[first] - BURST_CONTEXT_SECONDS, t[first]),
-                              average(t[last], t[last] + BURST_CONTEXT_SECONDS)) if v is not None]
-        burst_speed = meters / seconds * 3.6 if seconds > 0 else 0.0
-        if (around and seconds <= BURST_MAX_SECONDS and burst_speed >= BURST_RATIO * max(around)
-                and burst_speed - max(around) >= BURST_MIN_EXCESS_KMH):
-            jumps.append(Jump(first, last, t[first], meters, seconds))
+        seconds, meters = t[last] - t[first], d[last] - d[first]
+        straight = (meters_between(streams.lat[first], streams.lng[first], streams.lat[last], streams.lng[last])
+                    if positions else None)
+        base = around(first, last)
+        speed = meters / seconds * 3.6 if seconds > 0 else 0.0
+        if seconds <= BURST_MAX_SECONDS and straight is not None and \
+                meters - straight >= SPIKE_MIN_EXTRA_M and meters >= SPIKE_PATH_RATIO * straight:
+            jumps.append(Jump(first, last, t[first], meters, seconds, "spike", straight))
+        elif seconds <= BURST_MAX_SECONDS and speed >= BURST_RATIO * base and speed - base >= BURST_MIN_EXCESS_KMH:
+            jumps.append(Jump(first, last, t[first], meters, seconds, "jump", straight))
         else:
-            jumps += [Jump(i - 1, i, t[i - 1], d[i] - d[i - 1], t[i] - t[i - 1])
-                      for i in range(k, end + 1) if speeds[i] > jump_kmh]
+            for i in range(k, end + 1):
+                if speeds[i] > jump_kmh:
+                    step = (meters_between(streams.lat[i - 1], streams.lng[i - 1], streams.lat[i], streams.lng[i])
+                            if positions else None)
+                    out_and_back = step is not None and d[i] - d[i - 1] >= SPIKE_PATH_RATIO * step
+                    jumps.append(Jump(i - 1, i, t[i - 1], d[i] - d[i - 1], t[i] - t[i - 1],
+                                      "spike" if out_and_back else "jump", step))
         k = end + 1
+    cache[jump_kmh] = jumps
     return jumps
 
 
 def gps_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[tuple[float, float, float]]:
-    """(seconds since the start, meters, over how many seconds) per GPS jump."""
+    """(seconds since the start, meters, over how many seconds) per GPS glitch."""
     return [(j.at, j.meters, j.seconds) for j in find_jumps(streams, jump_kmh)]
 
 
 def _distance_without_jumps(streams: Streams, jump_kmh: float) -> list[float]:
-    """Cumulative distance where GPS jumps count as no distance (the real
-    movement during a jump is unknown; leaving it out can't make anything
+    """Cumulative distance without GPS glitches: a spike out and back counts
+    as the straight line from before to after it; a jump as no distance (the
+    real movement during it is unknown; leaving it out can't make anything
     look too fast). Kept on the streams object, as several rules use it."""
     cache = streams.__dict__.setdefault("_without_jumps", {})
     if jump_kmh in cache:
         return cache[jump_kmh]
     t, d = streams.time, streams.distance
-    in_jump = set()
+    # Per step inside a glitch: meters per second to count instead (a spike's
+    # straight line spread over its duration; 0 for a jump).
+    in_glitch = {}
     for jump in find_jumps(streams, jump_kmh):
-        in_jump.update(range(jump.first + 1, jump.last + 1))
+        rate = 0.0
+        if jump.kind == "spike" and jump.straight is not None and jump.seconds > 0:
+            rate = jump.straight / jump.seconds
+        in_glitch.update((k, rate) for k in range(jump.first + 1, jump.last + 1))
     clean = [0.0] * len(t)
     for k in range(1, len(t)):
         dd = max(0.0, d[k] - d[k - 1])
-        if t[k] <= t[k - 1] or k in in_jump:
+        if t[k] <= t[k - 1]:
             dd = 0.0
+        elif k in in_glitch:
+            dd = in_glitch[k] * (t[k] - t[k - 1])
         clean[k] = clean[k - 1] + dd
     cache[jump_kmh] = clean
     return clean
