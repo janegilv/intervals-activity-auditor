@@ -14,7 +14,7 @@ from intervals_auditor.db import Database
 from intervals_auditor.models import Activity
 from intervals_auditor.repositories import ActivityRepository, StreamRepository
 from intervals_auditor.sources.intervals import IntervalsRateLimitError
-from intervals_auditor.streams import STREAM_TYPES, parse_api, version_of
+from intervals_auditor.streams import parse_api, stream_types_for, version_of
 from intervals_auditor.timeutil import to_iso
 
 log = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ class StreamService:
         consecutive_errors = 0
         for index, activity in enumerate(todo, 1):
             try:
-                payload = self.client.get_streams(activity.id, STREAM_TYPES)
+                payload = self.client.get_streams(activity.id, stream_types_for(activity))
                 streams = parse_api(payload) if payload is not None else None
             except IntervalsRateLimitError as e:
                 result.rate_limited = True

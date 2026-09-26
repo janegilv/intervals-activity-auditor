@@ -445,7 +445,14 @@ have. They're fetched separately for the types in
 right away, the rest of the history at most `STREAMS_PER_RUN` (100) per
 run, newest first -- or all at once with `python main.py fetch-streams`
 (then `python main.py run --offline` to check them). An activity is fetched
-again only if it changes. `python main.py status` (and the web interface's
+again only if it changes.
+
+If the device's altitude is wrong, turn on elevation correction for the
+activity in Intervals.icu: the corrected elevation ("Fixed Alt" in its
+charts) is then used instead. Like any edit to an activity older than
+`REFRESH_DAYS`, it's picked up by the next full sync (daily), or right away
+with `python main.py resync` (Full resync on the web interface's Status
+page); the streams are then fetched again and the activity re-checked. `python main.py status` (and the web interface's
 Status page) shows how many are stored and waiting. Activities that came
 from Strava have no streams on Intervals.icu, so only their summary is
 checked.

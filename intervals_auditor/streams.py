@@ -14,6 +14,10 @@ from typing import Iterator, NamedTuple
 
 # What's fetched and stored.
 STREAM_TYPES = ("time", "distance", "altitude")
+# The elevation Intervals.icu corrected from terrain data ("Fixed Alt" in its
+# charts) when elevation correction is turned on for the activity -- used
+# instead of the device's altitude then.
+CORRECTED_ALTITUDE = "fixed_altitude"
 # Keep a point at most every this many seconds (the checks look at windows
 # of a minute or so, and every second would make the database ~5x bigger).
 MIN_STEP_SECONDS = 5
@@ -33,12 +37,22 @@ class Streams:
         return len(self.time)
 
 
+def uses_corrected_altitude(activity) -> bool:
+    return bool(activity.raw.get("use_elevation_correction"))
+
+
+def stream_types_for(activity) -> tuple[str, ...]:
+    """The streams to fetch for an activity."""
+    return STREAM_TYPES + ((CORRECTED_ALTITUDE,) if uses_corrected_altitude(activity) else ())
+
+
 def version_of(activity) -> str:
     """Identifies the recording the stored streams were made from. It changes
-    when the activity changes (fingerprint) or Intervals.icu re-analyses it
-    (e.g. after trimming it or fixing its elevation), which calls for fetching
-    the streams again."""
-    return f"{activity.fingerprint or ''}|{activity.raw.get('analyzed') or ''}"
+    when the activity changes (fingerprint), Intervals.icu re-analyses it
+    (e.g. after trimming it) or elevation correction is turned on or off,
+    which calls for fetching the streams again."""
+    version = f"{activity.fingerprint or ''}|{activity.raw.get('analyzed') or ''}"
+    return version + ("|corrected-altitude" if uses_corrected_altitude(activity) else "")
 
 
 def parse_api(payload) -> Streams | None:
@@ -57,7 +71,10 @@ def parse_api(payload) -> Streams | None:
         by_type = {s["type"]: s.get("data") for s in payload}
     else:
         raise UnknownStreamsFormat(f"unexpected streams response of type {type(payload).__name__}")
-    time, distance, altitude = by_type.get("time"), by_type.get("distance"), by_type.get("altitude")
+    time, distance = by_type.get("time"), by_type.get("distance")
+    altitude = by_type.get(CORRECTED_ALTITUDE)
+    if not altitude or all(v is None for v in altitude):
+        altitude = by_type.get("altitude")
     if not time or not distance:
         return None
     n = min(len(time), len(distance))

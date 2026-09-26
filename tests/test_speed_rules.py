@@ -68,6 +68,18 @@ class StreamsTest(unittest.TestCase):
             with self.assertRaises(st.UnknownStreamsFormat):
                 st.parse_api(odd)
 
+    def test_corrected_elevation_wins(self):
+        device = api_streams([(600, 50, 5)])  # the device thinks this was a climb...
+        corrected = [s for s in api_streams([(600, 50, 0)]) if s["type"] == "altitude"]
+        corrected[0]["type"] = "fixed_altitude"  # ...Intervals.icu's corrected elevation says flat
+        parsed = st.parse_api(device + corrected)
+        self.assertEqual(parsed.altitude[0], parsed.altitude[-1])
+        self.assertEqual(run_check([activity("i1")], {"i1": parsed}), {})
+        self.assertIn("at +5% grade", run_check([activity("i1")], {"i1": st.parse_api(device)})["i1"].summary)
+        # An empty corrected stream falls back to the device's altitude.
+        corrected[0]["data"] = [None] * len(corrected[0]["data"])
+        self.assertNotEqual(st.parse_api(device + corrected).altitude[-1], st.parse_api(device).altitude[0])
+
     def test_windows_speed_grade_and_glitches(self):
         s = st.parse_api(api_streams([(300, 36, 5)]))
         ws = list(st.windows(s, 60))
@@ -169,6 +181,7 @@ class FakeStreamsClient:
     def __init__(self, streams=None):
         self.streams = streams or {}
         self.calls = []
+        self.types = {}
         self.fail = set()
         self.rate_limit_after = None
 
@@ -176,6 +189,7 @@ class FakeStreamsClient:
         if self.rate_limit_after is not None and len(self.calls) >= self.rate_limit_after:
             raise IntervalsRateLimitError("slow down")
         self.calls.append(activity_id)
+        self.types[activity_id] = types
         if activity_id in self.fail:
             raise ConnectionError("network down")
         return self.streams.get(activity_id)
@@ -216,6 +230,17 @@ class StreamServiceTest(unittest.TestCase):
         with self.r.db.transaction():
             self.r.activities.delete_many(["i2"])
         self.assertNotIn("i2", self.repo.records())
+
+    def test_turning_on_elevation_correction_fetches_it(self):
+        self.svc.fetch({"Ride"})
+        self.assertEqual(self.client.types["i1"], ("time", "distance", "altitude"))
+        self.assertEqual(st.version_of(self.r.activities.get("i1")),
+                         f"{self.r.activities.get('i1').fingerprint}|{GPS['analyzed']}")  # unchanged format
+        self.r.add(payload("i1", start="2026-09-20T07:00:00", use_elevation_correction=True,
+                           **{**GPS, "stream_types": GPS["stream_types"] + ["fixed_altitude"]}))
+        self.assertEqual([a.id for a in self.svc.pending({"Ride"})], ["i1"])
+        self.svc.fetch({"Ride"})
+        self.assertEqual(self.client.types["i1"], ("time", "distance", "altitude", "fixed_altitude"))
 
     def test_unexpected_responses_are_retried(self):
         self.client.streams["i6"] = {"message": "something else"}
