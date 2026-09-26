@@ -2,7 +2,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from models import Activity
+from auditor.models import Activity
 
 class ActivityCache:
     def __init__(self, path: Path):

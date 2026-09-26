@@ -2,18 +2,18 @@ import argparse
 from datetime import date, timedelta
 from pathlib import Path
 
-from config import load_settings
-from intervals_api import IntervalsClient
-from cache import ActivityCache
-from sync import sync_activities
-from checks.duplicate_overlap import DuplicateOverlapCheck
-from checks.under_time_limit import UnderTimeLimitCheck
-from checks.over_time_limit import OverTimeLimitCheck
-from checks.garmin_link_only import GarminLinkOnlyCheck
-from checks.implausible_pace import ImplausiblePaceCheck
-from checks.missing_distance import MissingDistanceCheck
-from checks.moving_elapsed_gap import MovingElapsedGapCheck
-from reporting import json_report, csv_report, markdown_report
+from auditor.config import load_settings
+from auditor.sources.intervals import IntervalsClient
+from auditor.cache import ActivityCache
+from auditor.sync import sync_activities
+from auditor.checks.duplicate_overlap import DuplicateOverlapCheck
+from auditor.checks.under_time_limit import UnderTimeLimitCheck
+from auditor.checks.over_time_limit import OverTimeLimitCheck
+from auditor.checks.garmin_link_only import GarminLinkOnlyCheck
+from auditor.checks.implausible_pace import ImplausiblePaceCheck
+from auditor.checks.missing_distance import MissingDistanceCheck
+from auditor.checks.moving_elapsed_gap import MovingElapsedGapCheck
+from auditor.reporting import json_report, csv_report, markdown_report
 
 CHECKS = {
     "duplicate_overlap": DuplicateOverlapCheck,
@@ -85,7 +85,7 @@ def main():
         return
 
     if args.export_strava_cache:
-        from strava_enrich import export_strava_cache
+        from auditor.strava_enrich import export_strava_cache
         cache = ActivityCache(settings.cache_db)
         try:
             count = export_strava_cache(cache, args.export_strava_cache)
@@ -95,7 +95,7 @@ def main():
         return
 
     if args.import_strava_cache:
-        from strava_enrich import import_strava_cache
+        from auditor.strava_enrich import import_strava_cache
         cache = ActivityCache(settings.cache_db)
         try:
             count = import_strava_cache(cache, args.import_strava_cache)
@@ -126,8 +126,8 @@ def main():
             print("Offline mode: using cache only.")
 
         if args.enrich_strava:
-            from strava_api import StravaClient
-            from strava_enrich import enrich_strava_stubs
+            from auditor.sources.strava import StravaClient
+            from auditor.strava_enrich import enrich_strava_stubs
 
             if not (settings.strava_client_id and settings.strava_client_secret and settings.strava_refresh_token):
                 raise RuntimeError(

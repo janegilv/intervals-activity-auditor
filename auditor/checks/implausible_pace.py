@@ -1,4 +1,4 @@
-import derivation
+from auditor import derivation
 from .base import ActivityCheck
 
 # Sane default bounds (km/h) per Intervals.icu activity type, calibrated

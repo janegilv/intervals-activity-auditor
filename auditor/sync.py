@@ -9,7 +9,7 @@ prune-on-full-sync behavior are all domain logic, not CLI logic.
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
-from strava_enrich import is_unresolved_stub_payload, resolved_strava_ids
+from auditor.strava_enrich import is_unresolved_stub_payload, resolved_strava_ids
 
 
 @dataclass

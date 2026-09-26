@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from strava_api import StravaRateLimitError
+from auditor.sources.strava import StravaRateLimitError
 
 STUB_MARKER = "_note"  # present only on the minimal stub Intervals.icu returns
 STUB_SOURCE = "STRAVA"
