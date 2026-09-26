@@ -93,7 +93,10 @@ select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; 
 .toggle { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
 
 main { padding: 14px 0 120px; }
-.result-line { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+.result-line { color: var(--muted); font-size: 13px; margin: 2px 0 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.result-line label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; color: var(--text); }
+.result-line input { width: 16px; height: 16px; margin: 0; cursor: pointer; }
+.result-line[hidden] { display: none; }
 .card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
   margin-bottom: 12px; box-shadow: var(--shadow); overflow: hidden;
@@ -233,14 +236,20 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
 
 <div class="wrap">
   <main>
-    <div class="result-line" id="resultline"></div>
+    <div class="result-line" id="resultbar">
+      <label title="Select or unselect every issue the current filters show">
+        <input type="checkbox" id="selectall"> <span id="selectalllabel">Select all</span>
+      </label>
+      <span id="resultline"></span>
+    </div>
     <div id="list"></div>
     <div class="settings">
       Commands are copied as
       <input id="prefix" aria-label="Command prefix" spellcheck="false">
       <span class="help">(e.g. <code>./main.py</code>; remembered in this browser).
-      Tip: tick issues to build one <code>ack</code> command for open ones and one <code>unack</code>
-      command for acknowledged ones; <kbd>/</kbd> search, <kbd>Esc</kbd> clear selection.</span>
+      Tip: tick issues (or "Select all" above the list, which follows the filters) to build one
+      <code>ack</code> command for open ones and one <code>unack</code> command for acknowledged ones;
+      <kbd>/</kbd> search, <kbd>Esc</kbd> clear selection.</span>
     </div>
   </main>
 </div>
@@ -504,10 +513,17 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     const groups = sortedGroups();
     const n = groups.reduce((sum, g) => sum + g.issues.length, 0);
     const filtered = state.q || state.sev.size || state.checks.size || state.type;
+    $("resultbar").hidden = !n;
     $("resultline").textContent = n
       ? `Showing ${n} ${n === 1 ? "issue" : "issues"} on ${groups.length} ${groups.length === 1 ? "activity" : "activities"}` +
         (filtered ? " (filtered)" : "")
       : "";
+    const shown = groups.flatMap((g) => g.issues.map((i) => i.number));
+    const picked = shown.filter((num) => state.selected.has(num)).length;
+    const box = $("selectall");
+    box.checked = n > 0 && picked === n;
+    box.indeterminate = picked > 0 && picked < n;
+    $("selectalllabel").textContent = picked === n && n ? `Unselect all ${n}` : `Select all ${n}`;
     if (!groups.length) {
       const nothingAtAll = !allIssues.some(stateMatch);
       $("list").innerHTML = `<div class="empty">${nothingAtAll
@@ -617,6 +633,13 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     if (sel.toUnack.length) copy(unackCommand(sel.toUnack), "Copied");
   });
   $("clearsel").addEventListener("click", () => { state.selected.clear(); renderSelection(); renderList(); });
+  $("selectall").addEventListener("change", () => {
+    // Everything the filters currently show: select all, or unselect all if already all selected.
+    const shown = [...visibleNumbers()];
+    const all = shown.every((n) => state.selected.has(n));
+    shown.forEach((n) => (all ? state.selected.delete(n) : state.selected.add(n)));
+    renderSelection(); renderList();
+  });
   document.addEventListener("keydown", (e) => {
     const el = document.activeElement;
     const typing = !!el && (/^(TEXTAREA|SELECT)$/.test(el.tagName) ||

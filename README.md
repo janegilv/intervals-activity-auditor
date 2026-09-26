@@ -104,7 +104,8 @@ Every run (including the scheduled monitor) also writes reports to
   filter by open/acknowledged, severity, check and activity type, sort,
   and open activities in Intervals.icu. Tick issues to get ready-made
   commands to copy: one `ack` for the open ones (with the note you type)
-  and one `unack` for the acknowledged ones. Each issue also has its own
+  and one `unack` for the acknowledged ones. "Select all" above the list
+  ticks everything the current filters show. Each issue also has its own
   copy button. The command prefix (`python main.py`, `./main.py`, ...) can be
   changed at the bottom of the page.
 - `report.md`, `report.json` and `report.csv` (one row per activity
