@@ -273,10 +273,16 @@ def cmd_acks(app: App, args) -> int:
     return 0
 
 
-def cmd_checks(settings, args) -> int:
-    for name, cls in CHECKS.items():
-        enabled = settings.checks.get(name, {}).get("enabled", False)
-        print(f"{'✓' if enabled else '○'} {name:<20} {'enabled ' if enabled else 'disabled'}  {cls.description}")
+def cmd_checks(app: App, args) -> int:
+    for check in app.check_settings.describe():
+        mark = "✓" if check.enabled else "○"
+        state = "enabled " if check.enabled else "disabled"
+        print(f"{mark} {check.name:<20} {state}  {check.description}")
+        changes = [f"{p.key}={p.value!r} (file: {p.file_value!r})" for p in check.params if p.changed]
+        if check.enabled_changed:
+            changes.insert(0, f"enabled={check.enabled}")
+        if changes:
+            print(f"    changed in the web interface: {', '.join(changes)}")
     return 0
 
 
@@ -334,6 +340,7 @@ def cmd_strava_import(app: App, args) -> int:
 COMMANDS = {
     "run": cmd_run, "resync": cmd_run, "monitor": cmd_monitor, "issues": cmd_issues, "show": cmd_show,
     "ack": cmd_ack, "unack": cmd_unack, "acks": cmd_acks, "status": cmd_status, "report": cmd_report,
+    "checks": cmd_checks,
     "notify-test": cmd_notify_test, "strava-export": cmd_strava_export, "strava-import": cmd_strava_import,
 }
 
@@ -354,8 +361,6 @@ def main(argv=None) -> int:
     setup_logging(args, settings)
     log.debug("Command %s with %s", args.command, vars(args))
 
-    if args.command == "checks":
-        return cmd_checks(settings, args)
     try:
         with App(settings) as app:
             return COMMANDS[args.command](app, args)

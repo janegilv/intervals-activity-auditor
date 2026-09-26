@@ -138,6 +138,10 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         code, out, _ = self.cli("checks")
         self.assertIn("✓ duplicate_overlap", out)
+        with App(self.settings) as app:
+            app.check_settings.update("under_time_limit", {"maximum_duration_seconds": 50})
+        code, out, _ = self.cli("checks")
+        self.assertIn("changed in the web interface: maximum_duration_seconds=50 (file: 100)", out)
 
     def test_errors(self):
         code, _, err = self.cli("show", "nope")

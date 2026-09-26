@@ -298,6 +298,33 @@ class AcknowledgmentRepository:
         )
 
 
+class CheckSettingRepository:
+    """Check settings changed in the web interface (see services/check_settings.py)."""
+
+    def __init__(self, db: Database):
+        self.conn = db.conn
+
+    def all(self) -> dict[str, dict]:
+        result: dict[str, dict] = {}
+        for r in self.conn.execute("SELECT check_name, key, value_json FROM check_settings ORDER BY check_name, key"):
+            result.setdefault(r["check_name"], {})[r["key"]] = json.loads(r["value_json"])
+        return result
+
+    def set(self, check_name: str, key: str, value, now: str) -> None:
+        self.conn.execute(
+            "INSERT INTO check_settings (check_name, key, value_json, updated_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(check_name, key) DO UPDATE SET value_json = excluded.value_json, "
+            "updated_at = excluded.updated_at",
+            (check_name, key, json.dumps(value), now),
+        )
+
+    def delete(self, check_name: str, key: str | None = None) -> None:
+        if key is None:
+            self.conn.execute("DELETE FROM check_settings WHERE check_name = ?", (check_name,))
+        else:
+            self.conn.execute("DELETE FROM check_settings WHERE check_name = ? AND key = ?", (check_name, key))
+
+
 class StateRepository:
     """Small key/value store for sync bookkeeping (last sync times, health)."""
 

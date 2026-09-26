@@ -11,10 +11,12 @@ from intervals_auditor.db import Database
 from intervals_auditor.lock import RunLock
 from intervals_auditor.notifiers import Notifier, build_notifiers
 from intervals_auditor.repositories import (
-    AcknowledgmentRepository, ActivityRepository, IssueRepository, RunRepository, StateRepository,
+    AcknowledgmentRepository, ActivityRepository, CheckSettingRepository, IssueRepository, RunRepository,
+    StateRepository,
 )
 from intervals_auditor.services.acks import AckService
 from intervals_auditor.services.audit import AuditService
+from intervals_auditor.services.check_settings import CheckSettingsService
 from intervals_auditor.services.monitor import MonitorService
 from intervals_auditor.services.queries import QueryService
 from intervals_auditor.services.runner import RunService
@@ -48,7 +50,11 @@ class App:
         self.runs = RunRepository(self.db)
 
         self.queries = QueryService(self.activities, self.issues, self.acks, self.state, self.runs)
-        self.audit = AuditService(self.db, self.activities, self.issues, self.acks, settings.checks, clock=clock)
+        # checks.toml / checks.local.toml, plus changes made in the web interface.
+        self.check_settings = CheckSettingsService(self.db, CheckSettingRepository(self.db), settings.checks,
+                                                   clock=clock)
+        self.audit = AuditService(self.db, self.activities, self.issues, self.acks,
+                                  self.check_settings.effective(), clock=clock)
         self.ack_service = AckService(self.db, self.activities, self.issues, self.acks, clock=clock)
         self.runner = RunService(
             db=self.db, activities=self.activities, runs=self.runs, state=self.state, audit=self.audit,

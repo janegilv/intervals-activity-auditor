@@ -142,7 +142,21 @@ def _migration_2(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_number ON issues(number)")
 
 
-MIGRATIONS = [_migration_1, _migration_2]
+def _migration_3(conn: sqlite3.Connection) -> None:
+    """Check settings changed in the web interface. They're layered on top of
+    checks.toml and checks.local.toml; a missing row means "use the file"."""
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS check_settings (
+        check_name TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (check_name, key)
+    );
+    """)
+
+
+MIGRATIONS = [_migration_1, _migration_2, _migration_3]
 SCHEMA_VERSION = len(MIGRATIONS)
 
 
