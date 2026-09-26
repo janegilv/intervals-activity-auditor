@@ -435,9 +435,11 @@ used as it is: a type that isn't listed isn't checked by that rule.
   activity (h:mm:ss from the start), and for how long it was too fast.
   GPS jumps don't count as distance, and sudden altitude jumps (over 5 m/s,
   the device correcting itself) don't count as climbing. Devices often
-  settle their altitude in the first minutes, so for the first
-  `grade_ignored_first_seconds` (300) -- and wherever there's no altitude --
-  only the table's highest speed applies.
+  settle their altitude for a few minutes after the start and after a pause
+  (one ride drifted 150 m during a 30-minute stop and "climbed" back after
+  it), so for `altitude_settle_seconds` (300) after the start and after each
+  pause of a minute or more -- and wherever there's no altitude -- only the
+  table's highest speed applies.
 
 Top speed and sustained speed skip indoor and trainer sessions (their speed
 is virtual). All findings on one activity make one issue.

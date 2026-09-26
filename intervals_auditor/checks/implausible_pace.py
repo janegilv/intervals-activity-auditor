@@ -15,9 +15,9 @@ that isn't in a table isn't checked by that rule):
   as fast as a car, uphill you can't -- so this is what finds a car or lift
   ride inside a ride or hike. It needs the activity's streams (time series),
   which are fetched from Intervals.icu for these types. GPS jumps and
-  sudden altitude jumps are left out, and in the first
-  grade_ignored_first_seconds only the table's loosest limit applies, as
-  devices often settle their altitude after the start.
+  sudden altitude jumps are left out, and for altitude_settle_seconds after
+  the start and after each pause only the table's loosest limit applies, as
+  devices often settle their altitude then.
 
 Indoor and trainer sessions are skipped by the top-speed and sustained
 rules (their speed is virtual). All findings on one activity make one issue.
@@ -61,7 +61,7 @@ DEFAULT_SUSTAINED_SPEED_KMH_BY_GRADE = {
     "Hike": [[-15, 22], [0, 18], [10, 12], [20, 9], [30, 7]],
 }
 DEFAULT_SUSTAINED_SECONDS = 60
-DEFAULT_GRADE_IGNORED_FIRST_SECONDS = 300
+DEFAULT_ALTITUDE_SETTLE_SECONDS = 300
 # The top speed rule looks at the fastest this many seconds (with streams).
 TOP_SPEED_SECONDS = 10
 
@@ -107,10 +107,10 @@ class ImplausiblePaceCheck(ActivityCheck):
         number(config.get("sustained_seconds", DEFAULT_SUSTAINED_SECONDS), "sustained_seconds")
         if config.get("sustained_seconds", DEFAULT_SUSTAINED_SECONDS) < 10:
             raise ValueError("sustained_seconds must be at least 10")
-        ignored = config.get("grade_ignored_first_seconds", DEFAULT_GRADE_IGNORED_FIRST_SECONDS)
-        number(ignored, "grade_ignored_first_seconds")
-        if ignored < 0:
-            raise ValueError("grade_ignored_first_seconds can't be negative")
+        settle = config.get("altitude_settle_seconds", DEFAULT_ALTITUDE_SETTLE_SECONDS)
+        number(settle, "altitude_settle_seconds")
+        if settle < 0:
+            raise ValueError("altitude_settle_seconds can't be negative")
 
     def run(self, activities):
         issues = []
@@ -185,12 +185,12 @@ class ImplausiblePaceCheck(ActivityCheck):
         # Each window stands for the time until the next one starts (a few
         # seconds); adding those up for the too-fast windows gives about how
         # long it was too fast. "From" is the middle of the first such window.
-        ignored = float(self.config.get("grade_ignored_first_seconds", DEFAULT_GRADE_IGNORED_FIRST_SECONDS))
-        ws = list(windows(streams, seconds, grade_after_seconds=ignored))
+        settle = float(self.config.get("altitude_settle_seconds", DEFAULT_ALTITUDE_SETTLE_SECONDS))
+        ws = list(windows(streams, seconds, settle_seconds=settle))
         worst, first, too_fast_seconds = None, None, 0.0
         for index, w in enumerate(ws):
-            # Without a trustworthy grade (no altitude, the first minutes, or
-            # too short a stretch) only the most generous limit applies.
+            # Without a trustworthy grade (no altitude, just after the start or
+            # a pause, or too short a stretch) only the most generous limit applies.
             limit = limit_at(w.grade_percent) if w.grade_percent is not None else loosest
             if w.speed_kmh <= limit:
                 continue

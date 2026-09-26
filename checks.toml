@@ -36,9 +36,10 @@ margin_kmh = 2.0
 # Rule 3: the average speed over any stretch of this many seconds must not be
 # faster than sustained_speed_kmh_by_grade allows for the grade there.
 sustained_seconds = 60
-# Devices often settle their altitude in the first minutes; there only the
-# loosest limit of the table applies.
-grade_ignored_first_seconds = 300
+# Devices often settle their altitude for a few minutes after the start and
+# after a pause of a minute or more (e.g. drifting 150 m during a long stop);
+# for this many seconds after those, only the loosest limit applies.
+altitude_settle_seconds = 300
 
 [implausible_pace.speed_kmh_by_type]
 Run = [3, 30]
@@ -80,7 +81,7 @@ IceSkate = 50
 # the activity's streams, which are fetched from Intervals.icu for the types
 # listed here (STREAMS_PER_RUN per run, or all at once with fetch-streams).
 # GPS jumps and sudden altitude jumps (over 5 m/s) are left out. Where the
-# grade can't be told (no altitude, or the first grade_ignored_first_seconds),
+# grade can't be told (no altitude, or while the altitude settles),
 # the highest speed in the table applies.
 [implausible_pace.sustained_speed_kmh_by_grade]
 Ride = [[-8, 100], [-4, 80], [0, 60], [3, 42], [6, 32], [10, 24], [15, 18]]

@@ -140,6 +140,9 @@ GPS_JUMP_KMH = 150.0
 # altitude (e.g. right after the start, or after losing the GPS signal),
 # not climbing or descending.
 ALTITUDE_JUMP_M_PER_S = 5.0
+# A gap in the recording at least this long is a pause (auto-pause or the
+# stop button), after which the altitude may need to settle again.
+PAUSE_SECONDS = 60.0
 
 
 def gps_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[tuple[float, float]]:
@@ -197,7 +200,8 @@ def top_speed(streams: Streams, seconds: float = 10.0, jump_kmh: float = GPS_JUM
 
 
 def windows(streams: Streams, seconds: float, *, jump_kmh: float = GPS_JUMP_KMH,
-            altitude_jump_rate: float = ALTITUDE_JUMP_M_PER_S, grade_after_seconds: float = 0.0,
+            altitude_jump_rate: float = ALTITUDE_JUMP_M_PER_S, settle_seconds: float = 0.0,
+            pause_seconds: float = PAUSE_SECONDS,
             grade_min_distance_m: float = 200.0, smooth_seconds: float = 30.0) -> Iterator[Window]:
     """Every stretch of (at least) `seconds` through the activity, with its
     average speed and grade.
@@ -205,8 +209,11 @@ def windows(streams: Streams, seconds: float, *, jump_kmh: float = GPS_JUMP_KMH,
     - GPS jumps (steps faster than `jump_kmh`) count as no distance, so a bad
       point can't make a whole minute look fast.
     - Altitude jumps (faster than `altitude_jump_rate` m/s) don't count as
-      climbing, and stretches starting in the first `grade_after_seconds`
-      get no grade, as devices often settle their altitude after the start.
+      climbing. Devices often settle their altitude for a while after the
+      start and after a pause (e.g. drifting 150 m during a 30-minute stop
+      and climbing back slowly afterwards), so stretches starting within
+      `settle_seconds` of the start or of resuming after a pause of at least
+      `pause_seconds`, or spanning such a pause, get no grade.
     - Altitude is smoothed over `smooth_seconds`, and the grade is only given
       for stretches of at least `grade_min_distance_m` -- over a short
       distance, a few meters of altitude noise would be a steep "grade".
@@ -220,7 +227,9 @@ def windows(streams: Streams, seconds: float, *, jump_kmh: float = GPS_JUMP_KMH,
     if streams.altitude is not None:
         altitude = _smooth(t, _altitude_without_jumps(t, streams.altitude, altitude_jump_rate), smooth_seconds)
 
-    j = 1
+    # Where the recording (re)starts: the start, and the first point after each pause.
+    starts = [0] + [k for k in range(1, n) if t[k] - t[k - 1] >= pause_seconds]
+    j, s_index = 1, 0
     min_distance = grade_min_distance_m
     for i in range(n - 1):
         ti = t[i]
@@ -230,9 +239,13 @@ def windows(streams: Streams, seconds: float, *, jump_kmh: float = GPS_JUMP_KMH,
             j += 1
         if j >= n:
             return
+        while s_index + 1 < len(starts) and starts[s_index + 1] <= i:
+            s_index += 1
+        next_start = starts[s_index + 1] if s_index + 1 < len(starts) else n
+        settled = ti - t[starts[s_index]] >= settle_seconds and next_start > j
         distance = clean[j] - clean[i]
         grade = None
-        if altitude is not None and distance >= min_distance and ti >= grade_after_seconds:
+        if altitude is not None and distance >= min_distance and settled:
             grade = (altitude[j] - altitude[i]) / distance * 100
             grade = 40.0 if grade > 40.0 else -40.0 if grade < -40.0 else grade
         yield Window(ti, t[j], distance / (t[j] - ti) * 3.6, grade)

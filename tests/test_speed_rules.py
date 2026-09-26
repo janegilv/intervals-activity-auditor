@@ -142,7 +142,13 @@ class SpeedRulesTest(unittest.TestCase):
         self.assertEqual(run_check([ride], {"i1": start}), {})
         later = st.parse_api(api_streams([(900, 25, 0), (240, 30, 8), (600, 25, 0)]))
         self.assertIn("at +8% grade", run_check([ride], {"i1": later})["i1"].summary)
-        self.assertIn("i1", run_check([ride], {"i1": start}, config={"grade_ignored_first_seconds": 0}))
+        # The same "climb" right after a 30-minute pause is the altitude settling again.
+        paused = api_streams([(900, 25, 0), (240, 30, 8), (600, 25, 0)])
+        for stream in paused:
+            if stream["type"] == "time":
+                stream["data"] = [x + (1800 if i > 900 else 0) for i, x in enumerate(stream["data"])]
+        self.assertEqual(run_check([ride], {"i1": st.parse_api(paused)}), {})
+        self.assertIn("i1", run_check([ride], {"i1": start}, config={"altitude_settle_seconds": 0}))
 
     def test_car_uphill_is_found_fast_descent_is_not(self):
         ride = activity("i1")
