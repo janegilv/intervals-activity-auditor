@@ -1,11 +1,14 @@
 """report.html: a self-contained page to open in any browser (no server,
-no internet needed). The data is embedded as JSON and a small script adds
-search, filters, sorting and "copy ack command" buttons."""
+no internet needed). It inlines the shared styles and issue browser from
+intervals_auditor/ui (also used by the web interface) and embeds the data
+as JSON; the browser then offers search, filters, sorting and "copy ack
+command" buttons."""
 import json
 from pathlib import Path
 
 from intervals_auditor.checks import CHECKS
 from intervals_auditor.reporting.json_report import activity_to_dict
+from intervals_auditor.ui import asset
 from intervals_auditor.views import ActivityView
 
 TEMPLATE = Path(__file__).with_name("report_template.html")
@@ -25,7 +28,10 @@ def render(views: list[ActivityView], generated_at: str, meta: dict | None = Non
     # Embedded in a <script> element: escape "<" so no "</script>" or "<!--"
     # in an activity name can break out of it (JSON.parse turns it back).
     encoded = json.dumps(data, default=str, ensure_ascii=False).replace("<", "\\u003c")
-    return TEMPLATE.read_text(encoding="utf-8").replace(PLACEHOLDER, encoded)
+    return (TEMPLATE.read_text(encoding="utf-8")
+            .replace("/*__CSS__*/", asset("base.css"))
+            .replace("/*__JS__*/", asset("issues.js"))
+            .replace(PLACEHOLDER, encoded))
 
 
 def write(views: list[ActivityView], path: Path, generated_at: str, meta: dict | None = None):

@@ -33,7 +33,9 @@ class HtmlReportTest(unittest.TestCase):
     def test_data_is_embedded_and_cannot_break_out_of_the_script_tag(self):
         html = render(self.q.report_views(), "2026-09-26T10:00:00+00:00", {"last_sync": "x"})
         self.assertNotIn(PLACEHOLDER, html)
-        self.assertEqual(html.count("</script>"), 2)  # the data block and the app script
+        self.assertEqual(html.count("</script>"), 3)  # the data block, the issue browser, the start-up code
+        self.assertIn("AuditorUI", html)  # shared assets are inlined: the file works on its own
+        self.assertNotIn("/*__", html)
         data = self.embedded(html)
         self.assertEqual(data["last_sync"], "x")
         self.assertEqual(data["command"], "python main.py")
