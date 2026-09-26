@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from auditor.app import App
-from auditor.config import load_settings
-from auditor.sources.strava import StravaClient
+from intervals_auditor.app import App
+from intervals_auditor.config import load_settings
+from intervals_auditor.sources.strava import StravaClient
 
 
 class Response:
@@ -24,7 +24,7 @@ class StravaRefreshTokenTest(unittest.TestCase):
         seen = []
         client = StravaClient("id", "secret", "old", on_refresh_token=seen.append)
         body = {"access_token": "a", "expires_at": 9999999999, "refresh_token": "new"}
-        with mock.patch("auditor.sources.strava.requests.post", return_value=Response(body)) as post:
+        with mock.patch("intervals_auditor.sources.strava.requests.post", return_value=Response(body)) as post:
             client._ensure_token()
             self.assertEqual(post.call_args.kwargs["data"]["refresh_token"], "old")
         self.assertEqual((client.refresh_token, seen), ("new", ["new"]))

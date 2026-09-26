@@ -178,8 +178,8 @@ Set `NOTIFIERS` in `.env` to one or more (comma separated) of:
 Check the setup with `python main.py notify-test`.
 
 To add another service (Slack, email, ntfy, ...), write a small `Notifier`
-subclass in `auditor/notifiers/` (a `name`, `from_env()` reading its
-settings, and `send()`) and register it in `auditor/notifiers/__init__.py`.
+subclass in `intervals_auditor/notifiers/` (a `name`, `from_env()` reading its
+settings, and `send()`) and register it in `intervals_auditor/notifiers/__init__.py`.
 
 ## Logs
 
@@ -308,7 +308,7 @@ by default), likely a tracker that was never stopped.
 
 Enabled, but still under testing and development. API metadata can differ,
 so inspect stored `raw_json` and adapt `_is_garmin()` / `_strava_id_none()`
-in `auditor/checks/garmin_link_only.py` to match your data if the heuristic
+in `intervals_auditor/checks/garmin_link_only.py` to match your data if the heuristic
 misfires.
 
 ### implausible_pace
@@ -316,7 +316,7 @@ misfires.
 Enabled. Flags an activity whose average speed (`distance / moving_time`)
 falls outside a plausible range for its activity type -- usually a GPS
 glitch, a wrong activity type, or bad distance/duration data. Built-in
-per-type bounds live in `auditor/checks/implausible_pace.py`
+per-type bounds live in `intervals_auditor/checks/implausible_pace.py`
 (`DEFAULT_SPEED_BOUNDS_KMH`); override or add a type via
 `[implausible_pace.speed_kmh_by_type]` in `checks.toml`. Types with no
 meaningful pace (`WeightTraining`, `Workout`, `Transition`, `Elliptical`,
@@ -353,10 +353,10 @@ python main.py --offline --only moving_elapsed_gap
 
 ### Add a new check
 
-1. Create a class in `auditor/checks/` inheriting `ActivityCheck`.
+1. Create a class in `intervals_auditor/checks/` inheriting `ActivityCheck`.
 2. Implement `run(activities)`, returning `self.issue(activity, ...)` for
    each problem (pass `related=[...]` when it involves other activities).
-3. Register it in `CHECKS` in `auditor/checks/__init__.py`.
+3. Register it in `CHECKS` in `intervals_auditor/checks/__init__.py`.
 4. Add its configuration (at least `enabled = true`) to `checks.toml`.
 
 New checks automatically appear in the CLI, reports and notifications.
@@ -366,17 +366,17 @@ New checks automatically appear in the CLI, reports and notifications.
 The code is layered so another interface (e.g. a web UI) can reuse
 everything below the CLI:
 
-- `auditor/cli/`: argument parsing and text output only.
-- `auditor/app.py`: wires settings, database, services and clients; any
+- `intervals_auditor/cli/`: argument parsing and text output only.
+- `intervals_auditor/app.py`: wires settings, database, services and clients; any
   interface creates an `App` and calls its services.
-- `auditor/services/`: sync, Strava enrichment, checks/issue tracking
+- `intervals_auditor/services/`: sync, Strava enrichment, checks/issue tracking
   (`audit`), acknowledgments, queries for views, runner and monitor. They
   return result objects and log; they never print.
-- `auditor/views.py`: activity-centric read models (`ActivityView`,
+- `intervals_auditor/views.py`: activity-centric read models (`ActivityView`,
   `IssueView`) that the CLI, reports and notifications render.
-- `auditor/repositories.py`, `auditor/db.py`: SQLite access and schema
+- `intervals_auditor/repositories.py`, `intervals_auditor/db.py`: SQLite access and schema
   migrations.
-- `auditor/checks/`, `auditor/notifiers/`, `auditor/reporting/`,
-  `auditor/sources/` (API clients).
+- `intervals_auditor/checks/`, `intervals_auditor/notifiers/`, `intervals_auditor/reporting/`,
+  `intervals_auditor/sources/` (API clients).
 
 Run the tests with `python -m unittest`.

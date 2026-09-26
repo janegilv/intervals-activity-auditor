@@ -5,10 +5,10 @@ import unittest
 from datetime import date
 from pathlib import Path
 
-from auditor.db import SCHEMA_VERSION, Database
-from auditor.fingerprint import activity_fingerprint
-from auditor.models import Issue
-from auditor.repositories import ActivityRepository
+from intervals_auditor.db import SCHEMA_VERSION, Database
+from intervals_auditor.fingerprint import activity_fingerprint
+from intervals_auditor.models import Issue
+from intervals_auditor.repositories import ActivityRepository
 
 from tests.helpers import Repos, payload
 

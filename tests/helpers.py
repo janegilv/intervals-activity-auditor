@@ -1,8 +1,8 @@
 """Test helpers: build activity payloads shaped like Intervals.icu's."""
 from datetime import datetime, timedelta, timezone
 
-from auditor.db import Database
-from auditor.repositories import (
+from intervals_auditor.db import Database
+from intervals_auditor.repositories import (
     AcknowledgmentRepository, ActivityRepository, IssueRepository, RunRepository, StateRepository,
 )
 

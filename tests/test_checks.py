@@ -1,9 +1,9 @@
 import unittest
 
-from auditor.checks import CHECKS
-from auditor.checks.duplicate_overlap import DuplicateOverlapCheck
-from auditor.checks.garmin_link_only import GarminLinkOnlyCheck
-from auditor.checks.under_time_limit import UnderTimeLimitCheck
+from intervals_auditor.checks import CHECKS
+from intervals_auditor.checks.duplicate_overlap import DuplicateOverlapCheck
+from intervals_auditor.checks.garmin_link_only import GarminLinkOnlyCheck
+from intervals_auditor.checks.under_time_limit import UnderTimeLimitCheck
 
 from tests.helpers import Repos, payload
 

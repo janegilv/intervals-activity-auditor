@@ -1,9 +1,9 @@
 import unittest
 from datetime import date
 
-from auditor.services.strava import enrich_strava_stubs
-from auditor.services.sync import STATE_LAST_FULL_SYNC, SyncService
-from auditor.sources.strava import StravaRateLimitError
+from intervals_auditor.services.strava import enrich_strava_stubs
+from intervals_auditor.services.sync import STATE_LAST_FULL_SYNC, SyncService
+from intervals_auditor.sources.strava import StravaRateLimitError
 
 from tests.helpers import FakeClock, Repos, payload
 

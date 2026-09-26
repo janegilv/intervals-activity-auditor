@@ -6,11 +6,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from auditor.app import App
-from auditor.cli import main as cli
-from auditor.config import PROJECT_ROOT, load_settings
-from auditor.errors import ConfigError
-from auditor.logging_setup import reset_logging
+from intervals_auditor.app import App
+from intervals_auditor.cli import main as cli
+from intervals_auditor.config import PROJECT_ROOT, load_settings
+from intervals_auditor.errors import ConfigError
+from intervals_auditor.logging_setup import reset_logging
 
 from tests.helpers import payload
 
@@ -67,7 +67,7 @@ class CliTest(unittest.TestCase):
 
     def tearDown(self):
         reset_logging()
-        logging.getLogger("auditor").addHandler(logging.NullHandler())
+        logging.getLogger("intervals_auditor").addHandler(logging.NullHandler())
         self.tmp.cleanup()
 
     def cli(self, *argv):

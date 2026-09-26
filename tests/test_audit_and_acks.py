@@ -1,10 +1,10 @@
 import unittest
 from datetime import timedelta
 
-from auditor.services.acks import AckService, NotFoundError
-from auditor.services.audit import AuditService, UnknownCheckError
-from auditor.services.queries import QueryService
-from auditor.views import ACKNOWLEDGED, OPEN
+from intervals_auditor.services.acks import AckService, NotFoundError
+from intervals_auditor.services.audit import AuditService, UnknownCheckError
+from intervals_auditor.services.queries import QueryService
+from intervals_auditor.views import ACKNOWLEDGED, OPEN
 
 from tests.helpers import FakeClock, Repos, payload
 

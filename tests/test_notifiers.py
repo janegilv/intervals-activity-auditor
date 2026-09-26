@@ -2,12 +2,12 @@ import io
 import unittest
 from unittest import mock
 
-from auditor.errors import ConfigError
-from auditor.notifiers import build_notifiers, parse_names
-from auditor.notifiers.base import Notification, NotificationItem, NotifierError, render_html, render_markdown, render_text
-from auditor.notifiers.console import ConsoleNotifier
-from auditor.notifiers.discord import DiscordNotifier
-from auditor.notifiers.pushover import MAX_MESSAGE_CHARS, PushoverNotifier
+from intervals_auditor.errors import ConfigError
+from intervals_auditor.notifiers import build_notifiers, parse_names
+from intervals_auditor.notifiers.base import Notification, NotificationItem, NotifierError, render_html, render_markdown, render_text
+from intervals_auditor.notifiers.console import ConsoleNotifier
+from intervals_auditor.notifiers.discord import DiscordNotifier
+from intervals_auditor.notifiers.pushover import MAX_MESSAGE_CHARS, PushoverNotifier
 
 
 def notification(n_items=2):
@@ -71,10 +71,10 @@ class NotifierTest(unittest.TestCase):
         data = p.build_payload(notification(1))
         self.assertEqual((data["token"], data["user"], data["html"], data["device"]), ("token", "user", 1, "phone"))
         self.assertEqual(data["url"], "https://intervals.icu/activities/i0")
-        with mock.patch("auditor.notifiers.pushover.requests.post", return_value=Response(200, {"status": 1})) as post:
+        with mock.patch("intervals_auditor.notifiers.pushover.requests.post", return_value=Response(200, {"status": 1})) as post:
             p.send(notification())
             self.assertEqual(post.call_args.kwargs["data"]["title"], "3 activity issues to look at")
-        with mock.patch("auditor.notifiers.pushover.requests.post",
+        with mock.patch("intervals_auditor.notifiers.pushover.requests.post",
                         return_value=Response(400, {"status": 0, "errors": ["user key is invalid"]})):
             with self.assertRaisesRegex(NotifierError, "user key is invalid"):
                 p.send(notification())
@@ -84,9 +84,9 @@ class NotifierTest(unittest.TestCase):
         body = d.build_payload(notification())
         self.assertEqual(body["allowed_mentions"], {"parse": []})
         self.assertIn("[i1](https://intervals.icu/activities/i1)", body["embeds"][0]["description"])
-        with mock.patch("auditor.notifiers.discord.requests.post", return_value=Response(204)):
+        with mock.patch("intervals_auditor.notifiers.discord.requests.post", return_value=Response(204)):
             d.send(notification())
-        with mock.patch("auditor.notifiers.discord.requests.post", return_value=Response(404, text="Unknown Webhook")):
+        with mock.patch("intervals_auditor.notifiers.discord.requests.post", return_value=Response(404, text="Unknown Webhook")):
             with self.assertRaisesRegex(NotifierError, "Unknown Webhook"):
                 d.send(notification())
 

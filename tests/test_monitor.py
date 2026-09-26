@@ -6,13 +6,13 @@ from pathlib import Path
 
 import requests
 
-from auditor.notifiers.base import Notifier, NotifierError
-from auditor.services.acks import AckService
-from auditor.services.audit import AuditService
-from auditor.services.monitor import MonitorService
-from auditor.services.queries import QueryService
-from auditor.services.runner import RunService
-from auditor.services.sync import SyncService
+from intervals_auditor.notifiers.base import Notifier, NotifierError
+from intervals_auditor.services.acks import AckService
+from intervals_auditor.services.audit import AuditService
+from intervals_auditor.services.monitor import MonitorService
+from intervals_auditor.services.queries import QueryService
+from intervals_auditor.services.runner import RunService
+from intervals_auditor.services.sync import SyncService
 
 from tests.helpers import FakeClock, Repos, payload
 
