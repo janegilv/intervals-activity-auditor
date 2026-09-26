@@ -289,6 +289,19 @@ class RunWithStreamsTest(unittest.TestCase):
                 self.assertEqual(result.streams.fetched, 0)
                 self.assertEqual(len(client.calls), 2)
 
+                # i2 changes on Intervals.icu, and fetching its new streams fails: the
+                # checks keep using the old ones, so the issue doesn't flip to resolved.
+                client.payloads[1] = payload("i2", start="2026-09-21T07:00:00",
+                                             **{**GPS, "analyzed": "2026-09-26T12:00:00Z"})
+                client.fail = {"i2"}
+                result = app.runner.run(reports=False)
+                self.assertEqual((result.streams.fetched, len(result.streams.errors)), (0, 1))
+                self.assertEqual((result.audit.resolved, result.audit.new), ([], []))
+                self.assertIsNotNone(app.streams.get("i2"))
+                client.fail = set()
+                result = app.runner.run(reports=False)  # fetched again next time
+                self.assertEqual(result.streams.fetched, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -133,6 +133,8 @@
     const openForm = new Set();
     function render() {
       const open = a.issues.filter((i) => i.state === "open");
+      const current = a.issues.filter((i) => i.state !== "resolved");
+      const resolved = a.issues.filter((i) => i.state === "resolved");
       const p = UI.localParts(a.start_local);
       viewEl.innerHTML = `<div class="wrap page">
         <p><a href="#/">← All issues</a></p>
@@ -156,7 +158,10 @@
         ${open.length > 1 ? `<form class="inline-form" id="ackall">
             <input type="text" name="note" placeholder="Why these are fine (optional)">
             <button class="primary" type="submit">Acknowledge all ${open.length} open issues</button></form>` : ""}
-        <div class="card">${a.issues.length ? a.issues.map(issueRow).join("") : `<div class="empty">No issues on this activity.</div>`}</div>
+        <div class="card">${current.length ? current.map(issueRow).join("")
+          : `<div class="empty">${resolved.length ? "No open issues: everything found on this activity has been resolved." : "No issues on this activity."}</div>`}</div>
+        ${resolved.length ? `<details class="history"><summary>${pluralize(resolved.length, "resolved issue", "resolved issues")} (no longer found)</summary>
+          <div class="card">${resolved.map(issueRow).join("")}</div></details>` : ""}
         <h2>Acknowledgments</h2>
         ${ackTable(a.acknowledgments, { activityColumn: false, currentId: a.id })}
       </div>`;

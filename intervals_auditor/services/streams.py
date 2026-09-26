@@ -88,8 +88,8 @@ class StreamService:
                 result.errors[activity.id] = f"{type(e).__name__}: {e}"
                 log.warning("Streams: fetching %s failed: %s", activity.id, result.errors[activity.id])
                 with self.db.transaction():
-                    self.streams.save(activity.id, version_of(activity), to_iso(self.clock()), None,
-                                      status="error", error=result.errors[activity.id])
+                    self.streams.record_error(activity.id, version_of(activity), to_iso(self.clock()),
+                                              result.errors[activity.id])
                 consecutive_errors += 1
                 if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                     log.warning("Streams: %d failures in a row; trying again next run", consecutive_errors)

@@ -21,7 +21,6 @@ from intervals_auditor.models import SEVERITY_RANK, Acknowledgment, Activity, Is
 from intervals_auditor.repositories import (
     AcknowledgmentRepository, ActivityRepository, IssueRepository, StreamRepository,
 )
-from intervals_auditor.streams import version_of
 from intervals_auditor.timeutil import to_iso
 
 log = logging.getLogger(__name__)
@@ -70,9 +69,12 @@ class AuditService:
         return types
 
     def _stored_streams(self, activity: Activity):
-        # Only streams fetched from the activity as it is now; stale ones wait
-        # for the next sync to fetch them again.
-        return self.streams.get(activity.id, version_of(activity)) if self.streams else None
+        # The stored streams, even if the activity has changed since: a sync
+        # fetches them again before the checks run, and until that has
+        # happened (an offline run, a failed fetch) the old ones are a better
+        # guess than none -- skipping the activity would "resolve" its issue
+        # and then reopen (and notify) it once the streams are fetched.
+        return self.streams.get(activity.id) if self.streams else None
 
     def run_checks(self, activities: list[Activity], names: list[str]) -> tuple[dict[str, Issue], dict[str, int]]:
         found: dict[str, Issue] = {}

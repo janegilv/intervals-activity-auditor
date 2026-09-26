@@ -371,6 +371,15 @@ class StreamRepository:
         """, (activity_id, version, status, now, len(streams) if streams else 0,
               encode_streams(streams) if streams else None, error))
 
+    def record_error(self, activity_id: str, version: str, now: str, error: str) -> None:
+        """A fetch failed: remember why (so it's tried again), but keep any
+        streams stored from an earlier version of the activity."""
+        self.conn.execute("""
+        INSERT INTO activity_streams (activity_id, version, status, fetched_at, point_count, data, error)
+        VALUES (?,?,'error',?,0,NULL,?)
+        ON CONFLICT(activity_id) DO UPDATE SET error=excluded.error
+        """, (activity_id, version, now, error))
+
     def counts(self) -> dict[str, int]:
         return dict(self.conn.execute("SELECT status, COUNT(*) FROM activity_streams GROUP BY status").fetchall())
 
