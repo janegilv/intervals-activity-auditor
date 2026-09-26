@@ -6,17 +6,14 @@ acknowledgments, and a log of runs. It's the application's own store, not
 a disposable cache: don't delete it to "refresh" data, deletions upstream
 are picked up by syncing.
 
-Migrations are numbered and tracked with SQLite's PRAGMA user_version. A
-database created by the earlier cache-only version of this tool (tables
-activities + sync_state, user_version 0) is upgraded in place.
+Schema changes are numbered migrations tracked with SQLite's PRAGMA
+user_version: to change the schema, append a function to MIGRATIONS.
+Existing databases run only the migrations they haven't had yet.
 """
-import json
 import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-
-from intervals_auditor.fingerprint import activity_fingerprint
 
 log = logging.getLogger(__name__)
 
@@ -58,13 +55,8 @@ class Database:
 
 # --- migrations -----------------------------------------------------------
 
-def _columns(conn, table) -> set[str]:
-    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
-
-
 def _migration_1(conn: sqlite3.Connection) -> None:
-    """Upgrade the cache-only schema (or create from scratch) to the
-    activity/issue/acknowledgment schema."""
+    """The initial schema."""
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS activities (
         id TEXT PRIMARY KEY,
@@ -76,37 +68,17 @@ def _migration_1(conn: sqlite3.Connection) -> None:
         elapsed_time INTEGER,
         distance REAL,
         raw_json TEXT NOT NULL,
-        cached_at TEXT NOT NULL
+        synced_at TEXT NOT NULL,
+        fingerprint TEXT,
+        first_seen_at TEXT,
+        updated_at TEXT
     );
+    CREATE INDEX IF NOT EXISTS idx_activities_start_local ON activities(start_date_local);
+
     CREATE TABLE IF NOT EXISTS sync_state (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );
-    """)
-
-    cols = _columns(conn, "activities")
-    if "cached_at" in cols and "synced_at" not in cols:
-        conn.execute("ALTER TABLE activities RENAME COLUMN cached_at TO synced_at")
-    for column in ("fingerprint", "first_seen_at", "updated_at"):
-        if column not in _columns(conn, "activities"):
-            conn.execute(f"ALTER TABLE activities ADD COLUMN {column} TEXT")
-
-    rows = conn.execute(
-        "SELECT id, raw_json, synced_at FROM activities WHERE fingerprint IS NULL"
-    ).fetchall()
-    conn.executemany(
-        "UPDATE activities SET fingerprint = ?, first_seen_at = COALESCE(first_seen_at, ?), "
-        "updated_at = COALESCE(updated_at, ?) WHERE id = ?",
-        [
-            (activity_fingerprint(json.loads(r["raw_json"])), r["synced_at"], r["synced_at"], r["id"])
-            for r in rows
-        ],
-    )
-    if rows:
-        log.info("Database upgrade: fingerprinted %d existing activities", len(rows))
-
-    conn.executescript("""
-    CREATE INDEX IF NOT EXISTS idx_activities_start_local ON activities(start_date_local);
 
     CREATE TABLE IF NOT EXISTS issues (
         issue_key TEXT PRIMARY KEY,
@@ -176,15 +148,3 @@ def migrate(conn: sqlite3.Connection) -> None:
         except BaseException:
             conn.rollback()
             raise
-
-
-def copy_database(source: Path, target: Path) -> None:
-    """Consistent copy of a SQLite file (safe even if it's in use)."""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    src = sqlite3.connect(str(source))
-    dst = sqlite3.connect(str(target))
-    try:
-        src.backup(dst)
-    finally:
-        dst.close()
-        src.close()

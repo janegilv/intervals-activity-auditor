@@ -69,11 +69,6 @@ python main.py
 The first run fetches your whole history; after that each run fetches the
 last 30 days, plus the whole history once a day.
 
-**Upgrading from the cache-only version:** on the first start the old
-`cache/intervals.sqlite` (including everything fetched from Strava) is
-copied to `data/intervals_auditor.sqlite`, which is used from then on. The old file
-is left untouched and can be deleted once you're happy.
-
 ## Everyday use
 
 ```bash

@@ -125,19 +125,5 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
-class LegacyDatabaseTest(unittest.TestCase):
-    def test_old_cache_database_is_copied_once(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "checks.toml").write_text(CHECKS_TOML)
-            settings = load_settings(root, {})
-            with App(load_settings(root, {"DB_PATH": str(settings.legacy_db_path)})) as app:
-                with app.db.transaction():
-                    app.activities.upsert_many([payload("i1")], "t")
-            with App(settings) as app:
-                self.assertEqual(app.activities.count(), 1)
-            self.assertTrue(settings.legacy_db_path.exists())
-
-
 if __name__ == "__main__":
     unittest.main()

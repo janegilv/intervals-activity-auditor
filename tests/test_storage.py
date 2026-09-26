@@ -1,4 +1,3 @@
-import json
 import sqlite3
 import tempfile
 import unittest
@@ -8,7 +7,6 @@ from pathlib import Path
 from intervals_auditor.db import SCHEMA_VERSION, Database
 from intervals_auditor.fingerprint import activity_fingerprint
 from intervals_auditor.models import Issue
-from intervals_auditor.repositories import ActivityRepository
 
 from tests.helpers import Repos, payload
 
@@ -30,34 +28,16 @@ class FingerprintTest(unittest.TestCase):
                          activity_fingerprint(payload("i1", distance=30003.9)))
 
 
-class LegacyMigrationTest(unittest.TestCase):
-    def test_upgrades_cache_schema_in_place(self):
+class SchemaTest(unittest.TestCase):
+    def test_new_database_gets_current_schema_and_reopening_is_a_no_op(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "legacy.sqlite"
-            conn = sqlite3.connect(path)
-            conn.executescript("""
-            CREATE TABLE activities (id TEXT PRIMARY KEY, name TEXT, activity_type TEXT,
-                start_date_local TEXT, start_date TEXT, moving_time INTEGER, elapsed_time INTEGER,
-                distance REAL, raw_json TEXT NOT NULL, cached_at TEXT NOT NULL);
-            CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            """)
-            p = payload("i1")
-            conn.execute("INSERT INTO activities VALUES (?,?,?,?,?,?,?,?,?,?)",
-                         ("i1", p["name"], "Ride", p["start_date_local"], p["start_date"], 3600, 3600,
-                          30000.0, json.dumps(p), "2026-01-01T00:00:00+00:00"))
-            conn.execute("INSERT INTO sync_state VALUES ('last_successful_sync', 'x')")
-            conn.commit()
-            conn.close()
-
+            path = Path(tmp) / "new.sqlite"
+            Database(path).close()
             db = Database(path)
             self.assertEqual(db.conn.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
-            activity = ActivityRepository(db).get("i1")
-            self.assertEqual(activity.synced_at, "2026-01-01T00:00:00+00:00")
-            self.assertEqual(activity.first_seen_at, "2026-01-01T00:00:00+00:00")
-            self.assertEqual(activity.fingerprint, activity_fingerprint(p))
+            tables = {r[0] for r in db.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            self.assertTrue({"activities", "sync_state", "issues", "acknowledgments", "runs"} <= tables)
             db.close()
-            # Re-opening an upgraded database is a no-op.
-            Database(path).close()
 
 
 class ActivityRepositoryTest(unittest.TestCase):

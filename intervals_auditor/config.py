@@ -26,7 +26,6 @@ class Settings:
     intervals_athlete_id: str
     data_dir: Path
     db_path: Path
-    legacy_db_path: Path
     log_file: Path
     output_dir: Path
     refresh_days: int
@@ -113,7 +112,6 @@ def load_settings(root: Path = PROJECT_ROOT, environ=None) -> Settings:
         intervals_athlete_id=(env.get("INTERVALS_ATHLETE_ID") or "").strip(),
         data_dir=data_dir,
         db_path=path("DB_PATH", str(data_dir / "intervals_auditor.sqlite")),
-        legacy_db_path=path("CACHE_DB", "cache/intervals.sqlite"),
         log_file=path("LOG_FILE", str(data_dir / "logs" / "intervals_auditor.log")),
         output_dir=path("OUTPUT_DIR", "output"),
         refresh_days=_number(env, "REFRESH_DAYS", 30),

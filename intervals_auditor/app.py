@@ -7,7 +7,7 @@ request or per worker) and call the same services.
 import logging
 
 from intervals_auditor.config import Settings
-from intervals_auditor.db import Database, copy_database
+from intervals_auditor.db import Database
 from intervals_auditor.lock import RunLock
 from intervals_auditor.notifiers import Notifier, build_notifiers
 from intervals_auditor.repositories import (
@@ -31,18 +31,6 @@ STATE_STRAVA_REFRESH_TOKEN = "strava_refresh_token"
 STATE_STRAVA_REFRESH_TOKEN_FROM = "strava_refresh_token_env"
 
 
-def prepare_database(settings: Settings) -> bool:
-    """First start after upgrading: copy the old cache database (with its
-    Strava data) to the new location. The old file is left untouched."""
-    if settings.db_path.exists() or not settings.legacy_db_path.exists():
-        return False
-    copy_database(settings.legacy_db_path, settings.db_path)
-    log.warning("Copied %s to %s; the application uses the new file from now on. "
-                "The old one is no longer used and can be deleted.",
-                settings.legacy_db_path, settings.db_path)
-    return True
-
-
 class App:
     def __init__(self, settings: Settings, *, clock=utcnow, intervals_client=None, strava_client=None,
                  notifiers: list[Notifier] | None = None):
@@ -52,7 +40,6 @@ class App:
         self._strava_client = strava_client
         self._notifiers = notifiers
 
-        prepare_database(settings)
         self.db = Database(settings.db_path)
         self.activities = ActivityRepository(self.db)
         self.issues = IssueRepository(self.db)
