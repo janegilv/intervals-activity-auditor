@@ -87,7 +87,8 @@ class RunService:
         except BaseException as e:
             with self.db.transaction():
                 self.runs.finish(run_id, to_iso(self.clock()), "failed", result.as_dict(), describe_error(e))
-            log.error("=== %s failed (run #%d): %s", command, run_id, describe_error(e))
+            if not isinstance(e, ConfigError):  # the CLI reports configuration errors itself
+                log.error("=== %s failed (run #%d): %s", command, run_id, describe_error(e))
             raise
         status = "ok" if not (result.sync_error or result.strava_error) else "degraded"
         with self.db.transaction():

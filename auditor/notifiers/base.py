@@ -80,15 +80,24 @@ def render_text(n: Notification, max_chars: int | None = None) -> str:
     return _fit([n.title, n.summary], blocks, [n.footer or ""], max_chars, _more)
 
 
-def render_html(n: Notification, max_chars: int | None = None) -> str:
-    """Pushover's HTML subset: <b>, <i>, <u>, <font>, <a href>; newlines as-is."""
-    e = html.escape
+def shorten(text: str, max_chars: int | None) -> str:
+    if max_chars is None or len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def render_html(n: Notification, max_chars: int | None = None, max_line_chars: int | None = None) -> str:
+    """Pushover's HTML subset: <b>, <i>, <u>, <font>, <a href>; newlines as-is.
+    max_line_chars shortens each issue line so more activities fit."""
+    def e(text):  # element text; quotes only need escaping inside attributes
+        return html.escape(text, quote=False)
+
     blocks = []
     for item in n.items:
         lines = [f"<b>{e(item.heading)}</b>"]
         if item.url:
-            lines.append(f'<a href="{e(item.url)}">{e(item.link_text or item.url)}</a>')
-        lines += [f"• {e(line)}" for line in item.lines]
+            lines.append(f'<a href="{html.escape(item.url)}">{e(item.link_text or item.url)}</a>')
+        lines += [f"• {e(shorten(line, max_line_chars))}" for line in item.lines]
         blocks.append("\n".join(lines))
     return _fit([e(n.summary)], blocks, [f"<i>{e(n.footer)}</i>" if n.footer else ""], max_chars, _more)
 

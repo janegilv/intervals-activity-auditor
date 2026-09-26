@@ -20,6 +20,8 @@ log = logging.getLogger(__name__)
 API_URL = "https://api.pushover.net/1/messages.json"
 MAX_MESSAGE_CHARS = 1024
 MAX_TITLE_CHARS = 250
+# Push notifications are read on a phone: keep each issue to about two lines.
+MAX_LINE_CHARS = 90
 
 
 class PushoverNotifier(Notifier):
@@ -44,7 +46,7 @@ class PushoverNotifier(Notifier):
             "token": self.app_token,
             "user": self.user_key,
             "title": n.title[:MAX_TITLE_CHARS],
-            "message": render_html(n, MAX_MESSAGE_CHARS),
+            "message": render_html(n, MAX_MESSAGE_CHARS, MAX_LINE_CHARS),
             "html": 1,
             "priority": n.priority,
         }

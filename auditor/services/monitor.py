@@ -63,7 +63,7 @@ def build_issue_notification(views: list[ActivityView]) -> Notification:
     plural_a = "activity" if len(views) == 1 else "activities"
     return Notification(
         title=f"{issue_count} activity {plural_i} to look at",
-        summary=f"New {plural_i} on {len(views)} {plural_a} in Intervals.icu:",
+        summary=f"New or reopened on {len(views)} {plural_a} in Intervals.icu:",
         items=items,
         footer="Details: python main.py show <id> · Acknowledge: python main.py ack <id>",
     )
