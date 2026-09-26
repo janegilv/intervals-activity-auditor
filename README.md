@@ -102,9 +102,10 @@ Every run (including the scheduled monitor) also writes reports to
 - `report.html`: open it in any browser (`python main.py report` does
   that). It works offline and needs nothing installed. You can search,
   filter by open/acknowledged, severity, check and activity type, sort,
-  and open activities in Intervals.icu. Tick issues and type a note to
-  get a ready-made `ack` command to copy; each issue also has a copy
-  button. The command prefix (`python main.py`, `./main.py`, ...) can be
+  and open activities in Intervals.icu. Tick issues to get ready-made
+  commands to copy: one `ack` for the open ones (with the note you type)
+  and one `unack` for the acknowledged ones. Each issue also has its own
+  copy button. The command prefix (`python main.py`, `./main.py`, ...) can be
   changed at the bottom of the page.
 - `report.md`, `report.json` and `report.csv` (one row per activity
   issue) for reading, scripts and spreadsheets.

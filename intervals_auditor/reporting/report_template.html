@@ -148,8 +148,11 @@ details.det ul { margin: 4px 0 0; padding-left: 18px; }
 .selbar.show { transform: none; visibility: visible; transition: transform .15s ease; }
 .selbar .row { align-items: center; }
 .note { flex: 1 1 240px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.cmdrow { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.cmdrow[hidden] { display: none; }
+.cmdlabel { min-width: 150px; font-size: 13px; color: var(--muted); }
 .cmd {
-  display: block; width: 100%; margin-top: 8px; padding: 7px 10px; border-radius: 8px;
+  flex: 1; min-width: 0; padding: 7px 10px; border-radius: 8px;
   background: var(--surface-2); border: 1px solid var(--border); overflow-x: auto; white-space: nowrap;
 }
 .primary {
@@ -165,7 +168,11 @@ details.det ul { margin: 4px 0 0; padding-left: 18px; }
   transition: all .15s ease; pointer-events: none; z-index: 20;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.selbar.show ~ .toast { bottom: 150px; }
+.selbar.show ~ .toast { bottom: 190px; }
+@media (max-width: 640px) {
+  .cmdrow { flex-wrap: wrap; }
+  .cmdlabel { min-width: 0; width: 100%; }
+}
 
 .settings { margin-top: 8px; font-size: 13px; color: var(--muted); }
 .settings input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); width: 280px; max-width: 100%; }
@@ -232,7 +239,8 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
       Commands are copied as
       <input id="prefix" aria-label="Command prefix" spellcheck="false">
       <span class="help">(e.g. <code>./main.py</code>; remembered in this browser).
-      Tip: tick issues to build one <code>ack</code> command; <kbd>/</kbd> search, <kbd>Esc</kbd> clear selection.</span>
+      Tip: tick issues to build one <code>ack</code> command for open ones and one <code>unack</code>
+      command for acknowledged ones; <kbd>/</kbd> search, <kbd>Esc</kbd> clear selection.</span>
     </div>
   </main>
 </div>
@@ -241,11 +249,19 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
   <div class="wrap">
     <div class="row">
       <strong id="selcount"></strong>
-      <input id="note" class="note" placeholder="Why these are fine (optional note)" aria-label="Note">
-      <button class="primary" id="copysel">Copy ack command</button>
-      <button class="secondary" id="clearsel">Clear</button>
+      <input id="note" class="note" placeholder="Why these are fine (optional note for ack)" aria-label="Note">
+      <button class="secondary" id="clearsel">Clear selection</button>
     </div>
-    <code class="cmd mono" id="selcmd"></code>
+    <div class="cmdrow" id="ackrow">
+      <span class="cmdlabel" id="acklabel"></span>
+      <code class="cmd mono" id="ackcmd"></code>
+      <button class="primary" id="copyack">Copy</button>
+    </div>
+    <div class="cmdrow" id="unackrow">
+      <span class="cmdlabel" id="unacklabel"></span>
+      <code class="cmd mono" id="unackcmd"></code>
+      <button class="primary" id="copyunack">Copy</button>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast" role="status"></div>
@@ -423,7 +439,7 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     }).join("");
     const ack = i.acknowledgment;
     return `<div class="issue${acked ? " acked" : ""}">
-      <div>${acked ? "" : `<input type="checkbox" data-select="${i.number}" aria-label="Select issue ${i.number}" ${state.selected.has(i.number) ? "checked" : ""}>`}</div>
+      <div><input type="checkbox" data-select="${i.number}" aria-label="Select issue ${i.number}" ${state.selected.has(i.number) ? "checked" : ""}></div>
       <div>
         <div class="top">
           <span class="num">Issue ${i.number}</span>
@@ -447,8 +463,7 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
 
   function cardHtml(a, issues) {
     const p = a._parts;
-    const selectable = issues.filter((i) => i.state === "open");
-    const allSelected = selectable.length && selectable.every((i) => state.selected.has(i.number));
+    const allSelected = issues.every((i) => state.selected.has(i.number));
     return `<section class="card">
       <div class="card-head">
         <div class="when"><div class="date">${esc(p.date)}</div><div class="time">${esc(p.time)}</div></div>
@@ -460,7 +475,7 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
           <div class="idline">activity: <span class="mono">${esc(a.id)}</span>
             <button class="copy" data-copy-id="${esc(a.id)}" title="Copy activity id">Copy</button></div>
           <div><a href="${esc(a.url)}" target="_blank" rel="noopener">Open in Intervals.icu ↗</a></div>
-          ${selectable.length > 1 ? `<div><button class="linkbtn" data-select-activity="${esc(a.id)}">${allSelected ? "Unselect" : "Select"} all ${selectable.length}</button></div>` : ""}
+          ${issues.length > 1 ? `<div><button class="linkbtn" data-select-activity="${esc(a.id)}">${allSelected ? "Unselect" : "Select"} all ${issues.length}</button></div>` : ""}
         </div>
       </div>
       ${issues.map(issueHtml).join("")}
@@ -507,13 +522,37 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     const note = $("note").value.trim();
     return `${state.prefix} ack ${numbers.join(" ")}` + (note ? ` -n ${shellQuote(note)}` : "");
   }
+  function unackCommand(numbers) {
+    return `${state.prefix} unack ${numbers.join(" ")}`;
+  }
+  function selectedByState() {
+    const nums = [...state.selected].filter((n) => byNumber.has(n)).sort((a, b) => a - b);
+    return {
+      all: nums,
+      toAck: nums.filter((n) => byNumber.get(n).state === "open"),
+      toUnack: nums.filter((n) => byNumber.get(n).state === "acknowledged"),
+    };
+  }
+  function visibleNumbers() {
+    const seen = new Set();
+    activities.forEach((a) => a.issues.forEach((i) => { if (matches(i, a)) seen.add(i.number); }));
+    return seen;
+  }
   function renderSelection() {
-    // Only keep selected issues that are still open.
-    [...state.selected].forEach((n) => { const i = byNumber.get(n); if (!i || i.state !== "open") state.selected.delete(n); });
-    const nums = [...state.selected].sort((a, b) => a - b);
-    $("selbar").classList.toggle("show", nums.length > 0);
-    $("selcount").textContent = nums.length === 1 ? "1 issue selected" : nums.length + " issues selected";
-    $("selcmd").textContent = nums.length ? ackCommand(nums) : "";
+    const sel = selectedByState();
+    const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+    const visible = visibleNumbers();
+    const hidden = sel.all.filter((n) => !visible.has(n)).length;
+    $("selbar").classList.toggle("show", sel.all.length > 0);
+    $("selcount").textContent = plural(sel.all.length, "issue selected", "issues selected") +
+      (hidden ? ` (${hidden} hidden by the filters)` : "");
+    $("note").hidden = !sel.toAck.length;
+    $("ackrow").hidden = !sel.toAck.length;
+    $("acklabel").textContent = "Acknowledge " + plural(sel.toAck.length, "open issue", "open issues");
+    $("ackcmd").textContent = sel.toAck.length ? ackCommand(sel.toAck) : "";
+    $("unackrow").hidden = !sel.toUnack.length;
+    $("unacklabel").textContent = "Report " + plural(sel.toUnack.length, "acknowledged issue", "acknowledged issues") + " again";
+    $("unackcmd").textContent = sel.toUnack.length ? unackCommand(sel.toUnack) : "";
   }
 
   function render() {
@@ -523,7 +562,7 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
   }
 
   // ---------- events ----------
-  $("q").addEventListener("input", (e) => { state.q = e.target.value; renderControls(); renderList(); });
+  $("q").addEventListener("input", (e) => { state.q = e.target.value; render(); });
   document.querySelector(".seg").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     state.show = b.dataset.state; persist(); render();
@@ -556,26 +595,32 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
       renderSelection(); renderList();
     } else if (t.dataset.selectActivity) {
       const a = activities.find((x) => x.id === t.dataset.selectActivity);
-      const nums = a.issues.filter((i) => matches(i, a) && i.state === "open").map((i) => i.number);
+      const nums = a.issues.filter((i) => matches(i, a)).map((i) => i.number);
       const all = nums.every((n) => state.selected.has(n));
       nums.forEach((n) => (all ? state.selected.delete(n) : state.selected.add(n)));
       renderSelection(); renderList();
     } else if (t.dataset.copyAck) {
       copy(ackCommand([+t.dataset.copyAck]), "Copied");
     } else if (t.dataset.copyUnack) {
-      copy(`${state.prefix} unack ${t.dataset.copyUnack}`, "Copied");
+      copy(unackCommand([+t.dataset.copyUnack]), "Copied");
     } else if (t.dataset.copyId) {
       copy(t.dataset.copyId, "Copied activity id");
     }
   });
   $("note").addEventListener("input", renderSelection);
-  $("copysel").addEventListener("click", () => {
-    const nums = [...state.selected].sort((a, b) => a - b);
-    if (nums.length) copy(ackCommand(nums), "Copied");
+  $("copyack").addEventListener("click", () => {
+    const sel = selectedByState();
+    if (sel.toAck.length) copy(ackCommand(sel.toAck), "Copied");
+  });
+  $("copyunack").addEventListener("click", () => {
+    const sel = selectedByState();
+    if (sel.toUnack.length) copy(unackCommand(sel.toUnack), "Copied");
   });
   $("clearsel").addEventListener("click", () => { state.selected.clear(); renderSelection(); renderList(); });
   document.addEventListener("keydown", (e) => {
-    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
+    const el = document.activeElement;
+    const typing = !!el && (/^(TEXTAREA|SELECT)$/.test(el.tagName) ||
+      (el.tagName === "INPUT" && !/^(checkbox|radio|button)$/.test(el.type)));
     if (e.key === "/" && !typing) { e.preventDefault(); $("q").focus(); }
     else if (e.key === "Escape") {
       if (typing) { document.activeElement.blur(); }
