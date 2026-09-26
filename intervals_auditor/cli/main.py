@@ -219,6 +219,12 @@ def cmd_show(app: App, args) -> int:
     return 0
 
 
+def print_report_refreshed(app: App) -> None:
+    paths = app.refresh_reports()
+    if paths:
+        print(f"Report updated; reload it in your browser: {paths[0].as_uri()}")
+
+
 def cmd_ack(app: App, args) -> int:
     created = []
     for kind, value in resolve_refs(app, args.refs):
@@ -236,6 +242,7 @@ def cmd_ack(app: App, args) -> int:
     print()
     undo = " ".join(str(a.issue_number) for a in created)
     print(f"They're hidden until an activity involved changes. Undo with: {render.cli_prefix()} unack {undo}")
+    print_report_refreshed(app)
     return 0
 
 
@@ -251,6 +258,8 @@ def cmd_unack(app: App, args) -> int:
         return 0
     print(f"Revoked {len(revoked)} acknowledgment(s); the issues will be reported again:")
     print(render.acks_list(revoked))
+    print()
+    print_report_refreshed(app)
     return 0
 
 

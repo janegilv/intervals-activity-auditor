@@ -105,6 +105,17 @@ class App:
             health_alert_after_hours=self.settings.health_alert_after_hours, clock=self.clock,
         )
 
+    def refresh_reports(self) -> list:
+        """Rewrite the report files after a change made outside a run (e.g.
+        ack/unack), so they match the database. The reports are only a view
+        of the database: failing to write them is logged and never undoes
+        the change itself."""
+        try:
+            return self.runner.write_reports()
+        except OSError as e:
+            log.warning("Could not update the reports in %s: %s", self.settings.output_dir, e)
+            return []
+
     def lock(self) -> RunLock:
         return RunLock(self.settings.lock_path)
 

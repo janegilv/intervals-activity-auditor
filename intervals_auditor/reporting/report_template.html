@@ -169,6 +169,7 @@ details.det ul { margin: 4px 0 0; padding-left: 18px; }
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0;
   background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 14px;
   transition: all .15s ease; pointer-events: none; z-index: 20;
+  white-space: pre-line; text-align: center; max-width: calc(100% - 32px);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .selbar.show ~ .toast { bottom: 190px; }
@@ -248,8 +249,9 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
       <input id="prefix" aria-label="Command prefix" spellcheck="false">
       <span class="help">(e.g. <code>./main.py</code>; remembered in this browser).
       Tip: tick issues (or "Select all" above the list, which follows the filters) to build one
-      <code>ack</code> command for open ones and one <code>unack</code> command for acknowledged ones;
-      <kbd>/</kbd> search, <kbd>Esc</kbd> clear selection.</span>
+      <code>ack</code> command for open ones and one <code>unack</code> command for acknowledged ones.
+      <code>ack</code>/<code>unack</code> update this file; reload the page afterwards (your search
+      and filters are kept). <kbd>/</kbd> search, <kbd>Esc</kbd> clear selection.</span>
     </div>
   </main>
 </div>
@@ -297,6 +299,23 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     if (typeof saved.details === "boolean") state.details = saved.details;
     if (saved.prefix) state.prefix = saved.prefix;
   } catch (e) { /* storage unavailable: defaults are fine */ }
+  // Search and filters survive a reload of this tab (e.g. after running an
+  // ack command and reloading to see the result).
+  const FILTER_KEY = STORE_KEY + "-filters";
+  try {
+    const f = JSON.parse(sessionStorage.getItem(FILTER_KEY) || "{}");
+    if (typeof f.q === "string") state.q = f.q;
+    if (Array.isArray(f.sev)) f.sev.forEach((s) => state.sev.add(s));
+    if (Array.isArray(f.checks)) f.checks.forEach((c) => state.checks.add(c));
+    if (typeof f.type === "string") state.type = f.type;
+  } catch (e) { /* ignore */ }
+  function persistFilters() {
+    try {
+      sessionStorage.setItem(FILTER_KEY, JSON.stringify({
+        q: state.q, sev: [...state.sev], checks: [...state.checks], type: state.type,
+      }));
+    } catch (e) { /* ignore */ }
+  }
   function persist() {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
@@ -340,9 +359,13 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     t.textContent = msg;
     t.classList.add("show");
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => t.classList.remove("show"), 1600);
+    toast.timer = setTimeout(() => t.classList.remove("show"), msg.includes("\n") ? 3500 : 1600);
   }
-  async function copy(text, label) {
+  const RELOAD_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "⌘R" : "Ctrl+R";
+  async function copyCommand(text) {
+    await copy(text, "Copied", `Run it, then reload this page (${RELOAD_KEY}) to see the result`);
+  }
+  async function copy(text, label, hint) {
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
@@ -354,7 +377,7 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
       try { document.execCommand("copy"); } catch (e2) { /* ignore */ }
       ta.remove();
     }
-    toast((label || "Copied") + ": " + (text.length > 70 ? text.slice(0, 67) + "…" : text));
+    toast((label || "Copied") + ": " + (text.length > 70 ? text.slice(0, 67) + "…" : text) + (hint ? "\n" + hint : ""));
   }
 
   // ---------- data ----------
@@ -572,6 +595,7 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
   }
 
   function render() {
+    persistFilters();
     renderControls();
     renderList();
     renderSelection();
@@ -616,9 +640,9 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
       nums.forEach((n) => (all ? state.selected.delete(n) : state.selected.add(n)));
       renderSelection(); renderList();
     } else if (t.dataset.copyAck) {
-      copy(ackCommand([+t.dataset.copyAck]), "Copied");
+      copyCommand(ackCommand([+t.dataset.copyAck]));
     } else if (t.dataset.copyUnack) {
-      copy(unackCommand([+t.dataset.copyUnack]), "Copied");
+      copyCommand(unackCommand([+t.dataset.copyUnack]));
     } else if (t.dataset.copyId) {
       copy(t.dataset.copyId, "Copied activity id");
     }
@@ -626,11 +650,11 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
   $("note").addEventListener("input", renderSelection);
   $("copyack").addEventListener("click", () => {
     const sel = selectedByState();
-    if (sel.toAck.length) copy(ackCommand(sel.toAck), "Copied");
+    if (sel.toAck.length) copyCommand(ackCommand(sel.toAck));
   });
   $("copyunack").addEventListener("click", () => {
     const sel = selectedByState();
-    if (sel.toUnack.length) copy(unackCommand(sel.toUnack), "Copied");
+    if (sel.toUnack.length) copyCommand(unackCommand(sel.toUnack));
   });
   $("clearsel").addEventListener("click", () => { state.selected.clear(); renderSelection(); renderList(); });
   $("selectall").addEventListener("change", () => {
@@ -651,6 +675,7 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     }
   });
 
+  $("q").value = state.q;
   renderMeta();
   render();
 })();

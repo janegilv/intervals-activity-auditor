@@ -91,6 +91,8 @@ class CliTest(unittest.TestCase):
 
         code, out, _ = self.cli("ack", "i101", "-n", "both real")
         self.assertEqual(code, 0)
+        self.assertIn("Report updated; reload it in your browser: file://", out)
+        self.assertIn("both real", (self.root / "output" / "report.html").read_text())
         self.assertIn("Acknowledged 2 issue(s)", out)
         self.assertIn("https://intervals.icu/activities/i101", out)
 
