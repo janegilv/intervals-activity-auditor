@@ -39,6 +39,11 @@ class Settings:
     strava_client_id: str = ""
     strava_client_secret: str = ""
     strava_refresh_token: str = ""
+    # Web interface (`serve`): where to listen, and how often the built-in
+    # scheduler runs the monitor (0 turns the scheduler off).
+    web_host: str = "127.0.0.1"
+    web_port: int = 8080
+    monitor_interval_minutes: float = 30.0
     env: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -83,7 +88,9 @@ def load_checks(root: Path, env) -> dict:
     # activities from a check) live in checks.local.toml instead of the
     # tracked checks.toml. Each section there is merged on top of the
     # matching section in checks.toml, one level deep.
-    local_path = root / "checks.local.toml"
+    local_path = Path(env.get("CHECKS_LOCAL_FILE") or root / "checks.local.toml")
+    if not local_path.is_absolute():
+        local_path = root / local_path
     if local_path.exists():
         try:
             with open(local_path, "rb") as f:
@@ -125,5 +132,8 @@ def load_settings(root: Path = PROJECT_ROOT, environ=None) -> Settings:
         strava_client_id=(env.get("STRAVA_CLIENT_ID") or "").strip(),
         strava_client_secret=(env.get("STRAVA_CLIENT_SECRET") or "").strip(),
         strava_refresh_token=(env.get("STRAVA_REFRESH_TOKEN") or "").strip(),
+        web_host=(env.get("WEB_HOST") or "127.0.0.1").strip(),
+        web_port=_number(env, "WEB_PORT", 8080),
+        monitor_interval_minutes=_number(env, "MONITOR_INTERVAL_MINUTES", 30.0, float),
         env=env,
     )

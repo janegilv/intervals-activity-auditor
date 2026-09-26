@@ -1,0 +1,4 @@
+# Extra packages for the web interface (`python main.py serve`, Docker image).
+-r requirements.txt
+fastapi>=0.110
+uvicorn>=0.29

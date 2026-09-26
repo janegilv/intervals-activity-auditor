@@ -25,7 +25,7 @@ from intervals_auditor.views import ACKNOWLEDGED, OPEN
 
 log = logging.getLogger("intervals_auditor.cli")
 
-CHATTY_COMMANDS = {"run", "monitor", "resync"}
+CHATTY_COMMANDS = {"run", "monitor", "resync", "serve"}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -117,6 +117,12 @@ examples:
                    help="Remove missing activities even if it's a large share (skips the safety guard).")
 
     command("notify-test", "Send a test message through the configured notifiers.")
+
+    p = command("serve", "Run the web interface (and the scheduled monitor) until stopped.")
+    p.add_argument("--host", help="Address to listen on (WEB_HOST, default 127.0.0.1; 0.0.0.0 lets other machines in).")
+    p.add_argument("--port", type=int, help="Port (WEB_PORT, default 8080).")
+    p.add_argument("--no-monitor", action="store_true",
+                   help="Don't run the monitor on a schedule (MONITOR_INTERVAL_MINUTES) while serving.")
 
     p = command("strava-export", "Back up Strava-fetched activity data to a JSON file.")
     p.add_argument("path")
@@ -298,6 +304,25 @@ def cmd_report(app: App, args) -> int:
     return 0
 
 
+def cmd_serve(settings, args) -> int:
+    try:
+        import uvicorn
+        from intervals_auditor.web.api import create_app
+    except ImportError as e:
+        print(f"The web interface needs extra packages ({e.name} is missing): "
+              f"pip install -r requirements-web.txt", file=sys.stderr)
+        return 2
+    with App(settings):
+        pass  # fail fast on configuration or database problems, and upgrade the schema once
+    host, port = args.host or settings.web_host, args.port or settings.web_port
+    log.info("Web interface on http://%s:%d/ (API docs at /api/docs)", host, port)
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        log.warning("There is no login yet: anyone who can reach %s:%d can use the web interface", host, port)
+    uvicorn.run(create_app(settings, scheduler=not args.no_monitor), host=host, port=port,
+                log_level="warning", access_log=False)
+    return 0
+
+
 def cmd_status(app: App, args) -> int:
     print(render.status(app.queries.status(), app.settings))
     return 0
@@ -361,6 +386,8 @@ def main(argv=None) -> int:
     setup_logging(args, settings)
     log.debug("Command %s with %s", args.command, vars(args))
 
+    if args.command == "serve":
+        return cmd_serve(settings, args)
     try:
         with App(settings) as app:
             return COMMANDS[args.command](app, args)

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intervals auditor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11.5' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/ui/base.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="#/">Intervals auditor</a>
+    <a class="tab" href="#/" data-route="issues">Issues</a>
+    <a class="tab" href="#/acks" data-route="acks">Acknowledgments</a>
+    <a class="tab" href="#/status" data-route="status">Status</a>
+    <a class="tab" href="#/checks" data-route="checks">Checks</a>
+    <span class="spacer"></span>
+    <span class="sync" id="syncinfo"></span>
+    <button class="secondary" id="syncnow" title="Fetch new and changed activities from Intervals.icu and run the checks">Sync now</button>
+  </div>
+</nav>
+<div id="view"></div>
+<script src="/ui/issues.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

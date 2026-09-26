@@ -23,7 +23,10 @@ class Database:
         self.path = Path(path) if str(path) != ":memory:" else path
         if isinstance(self.path, Path):
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(path), timeout=30)
+        # The web interface opens a connection per request and FastAPI may run
+        # the request's steps on different worker threads (one at a time), so
+        # the connection mustn't be tied to the thread that opened it.
+        self.conn = sqlite3.connect(str(path), timeout=30, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         if isinstance(self.path, Path):

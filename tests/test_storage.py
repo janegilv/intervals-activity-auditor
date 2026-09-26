@@ -1,5 +1,6 @@
 import sqlite3
 import tempfile
+import threading
 import unittest
 from datetime import date
 from pathlib import Path
@@ -41,6 +42,17 @@ class SchemaTest(unittest.TestCase):
 
 
 class IssueNumberMigrationTest(unittest.TestCase):
+    def test_connection_can_be_used_and_closed_from_another_thread(self):
+        # The web interface opens the database in one worker thread and may
+        # use and close it in others.
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Database(Path(tmp) / "threads.sqlite")
+            result = []
+            worker = threading.Thread(target=lambda: (result.append(db.conn.execute("SELECT 1").fetchone()[0]),
+                                                      db.close()))
+            worker.start(); worker.join()
+            self.assertEqual(result, [1])
+
     def test_existing_issues_get_numbers_in_the_order_found(self):
         from intervals_auditor.db import MIGRATIONS
         with tempfile.TemporaryDirectory() as tmp:
