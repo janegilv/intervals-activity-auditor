@@ -39,6 +39,8 @@ class Settings:
     strava_client_id: str = ""
     strava_client_secret: str = ""
     strava_refresh_token: str = ""
+    # Activity streams fetched per run for the checks that need them.
+    streams_per_run: int = 100
     # Web interface (`serve`): where to listen, and how often the built-in
     # scheduler runs the monitor (0 turns the scheduler off).
     web_host: str = "127.0.0.1"
@@ -132,6 +134,7 @@ def load_settings(root: Path = PROJECT_ROOT, environ=None) -> Settings:
         strava_client_id=(env.get("STRAVA_CLIENT_ID") or "").strip(),
         strava_client_secret=(env.get("STRAVA_CLIENT_SECRET") or "").strip(),
         strava_refresh_token=(env.get("STRAVA_REFRESH_TOKEN") or "").strip(),
+        streams_per_run=_number(env, "STREAMS_PER_RUN", 100),
         web_host=(env.get("WEB_HOST") or "127.0.0.1").strip(),
         web_port=_number(env, "WEB_PORT", 8080),
         monitor_interval_minutes=_number(env, "MONITOR_INTERVAL_MINUTES", 30.0, float),

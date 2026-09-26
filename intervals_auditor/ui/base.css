@@ -228,7 +228,7 @@ button:disabled { opacity: .5; cursor: default; }
 .form-grid input[type=number], .form-grid input[type=text], .form-grid textarea {
   width: 100%; max-width: 520px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
 }
-.form-grid textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; min-height: 64px; }
+.form-grid textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; min-height: 64px; max-width: 760px; white-space: pre; overflow-x: auto; }
 .changed { color: var(--medium); font-size: 12px; }
 .check-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .check-head h3 { margin: 0; font-size: 16px; }

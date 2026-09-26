@@ -136,6 +136,10 @@ class CheckSettingsService:
                 cleaned[key] = coerce(value_kind(file_cfg[key]), value, where=f"{name}.{key}")
             else:
                 raise CheckSettingsError(f"{name} has no setting {key!r}")
+        try:  # the check's own rules, e.g. the shape of a table
+            CHECKS[name].validate_config({**self.effective().get(name, {}), **cleaned})
+        except ValueError as e:
+            raise CheckSettingsError(f"{name}: {e}") from None
         now = to_iso(self.clock())
         with self.db.transaction():
             for key, value in cleaned.items():

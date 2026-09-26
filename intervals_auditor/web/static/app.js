@@ -312,6 +312,8 @@
           <dt>Monitor</dt><dd>${s.monitor.enabled ? `every ${esc(s.monitor.interval_minutes)} minutes · next run ${esc(UI.when(s.monitor.next_run_at))}` : "off (MONITOR_INTERVAL_MINUTES=0)"}</dd>
           <dt>Notifications</dt><dd>${esc(s.notifiers.join(", ") || "none")} · after ${esc(s.notify_after_minutes)} minutes</dd>
           <dt>Strava</dt><dd>${s.credentials.strava ? "configured" : "not configured"}</dd>
+          ${s.streams.types.length ? `<dt>Streams</dt><dd>${esc(s.streams.stored)} stored · ${esc(s.streams.waiting)} waiting to be fetched
+            <span class="help">(${esc(s.streams.unavailable)} activities have none; for ${esc(s.streams.types.join(", "))})</span></dd>` : ""}
           <dt>Job</dt><dd>${job ? `<span class="spinner"></span> ${esc(jobLabel(job.kind))} since ${esc(UI.when(job.started_at))}`
             : last ? `last: ${esc(jobLabel(last.kind))} <span class="badge ${esc(last.status)}">${esc(last.status)}</span> ${esc(UI.when(last.finished_at))} – ${esc(last.message)}` : "none yet"}</dd>
           <dt>Version</dt><dd>${esc(s.version)} · <a href="/api/docs">API docs</a> · <a href="/report.html" target="_blank">static report</a></dd>
@@ -344,6 +346,8 @@
       const bits = [];
       if (r.summary && r.summary.offline) bits.push("offline");
       if (sync.fetched != null) bits.push(`${sync.full ? "full sync" : "sync"}: ${sync.fetched} fetched, ${sync.inserted} new, ${sync.changed} changed, ${(sync.removed || []).length} removed`);
+      const streams = (r.summary || {}).streams;
+      if (streams && (streams.fetched || streams.unavailable)) bits.push(`streams: ${streams.fetched} fetched, ${streams.remaining} waiting`);
       if (audit.new != null) bits.push(`issues: ${audit.new} new, ${audit.reopened} reopened, ${audit.resolved} resolved`);
       return `<tr><td class="num">${esc(r.id)}</td><td>${esc(r.command)}</td><td>${esc(UI.when(r.started_at))}</td><td class="num">${esc(took)}</td>
         <td><span class="badge ${esc(r.status)}">${esc(r.status)}</span></td>
@@ -369,9 +373,19 @@
       else if (p.kind === "int" || p.kind === "float") input = `<input type="number" id="${id}" data-key="${esc(p.key)}" value="${esc(p.value)}" step="${p.kind === "int" ? "1" : "any"}">`;
       else if (p.kind === "list") input = `<input type="text" id="${id}" data-key="${esc(p.key)}" value="${esc((p.value || []).join(", "))}"><div class="hint">Comma separated</div>`;
       else if (p.kind === "str") input = `<input type="text" id="${id}" data-key="${esc(p.key)}" value="${esc(p.value)}">`;
-      else input = `<textarea id="${id}" data-key="${esc(p.key)}">${esc(JSON.stringify(p.value, null, 1))}</textarea><div class="hint">JSON</div>`;
+      else input = `<textarea id="${id}" data-key="${esc(p.key)}" rows="${jsonRows(p.value)}" spellcheck="false">${esc(jsonText(p.value))}</textarea><div class="hint">JSON</div>`;
       return `<label for="${id}"><code>${esc(p.key)}</code></label><div>${input}${hint}</div>`;
     }
+    // Tables (e.g. per activity type) one entry per line, so they're easy to edit.
+    function jsonText(value) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const entries = Object.entries(value);
+        if (!entries.length) return "{}";
+        return "{\n" + entries.map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(",\n") + "\n}";
+      }
+      return JSON.stringify(value);
+    }
+    const jsonRows = (value) => Math.min(16, Math.max(2, jsonText(value).split("\n").length));
     function render() {
       pageShell("Checks", `
         <p class="help">Settings come from <code>checks.toml</code> (and <code>checks.local.toml</code>). Changes made here are

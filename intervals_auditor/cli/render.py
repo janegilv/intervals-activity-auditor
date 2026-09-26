@@ -189,6 +189,11 @@ def run_summary(result: RunResult) -> str:
                      + (f", rate limited ({st.remaining} left for next run)" if st.rate_limited else ""))
     if result.strava_error:
         lines.append(f"Strava FAILED: {result.strava_error}")
+    if result.streams and (result.streams.fetched or result.streams.unavailable or result.streams.errors
+                           or result.streams.rate_limited):
+        lines.append(streams_summary(result.streams))
+    if result.streams_error:
+        lines.append(f"Streams FAILED: {result.streams_error}")
     if result.audit:
         au = result.audit
         lines.append(f"Checks: {', '.join(f'{k} {v}' for k, v in au.counts.items()) or 'none enabled'}")
@@ -197,7 +202,13 @@ def run_summary(result: RunResult) -> str:
     return "\n".join(lines)
 
 
-def status(info: StatusInfo, settings) -> str:
+def streams_summary(result) -> str:
+    text = (f"Streams: {result.fetched} fetched, {result.unavailable} without streams, "
+            f"{len(result.errors)} failed, {result.remaining} still waiting")
+    return text + (" (Intervals.icu asked us to slow down)" if result.rate_limited else "")
+
+
+def status(info: StatusInfo, settings, streams: dict | None = None) -> str:
     lines = [
         f"Database        {settings.db_path}",
         f"Activities      {info.activity_count}",
@@ -207,6 +218,9 @@ def status(info: StatusInfo, settings) -> str:
     ]
     if info.sync_failing_since:
         lines.append(f"SYNC FAILING    since {format_local(info.sync_failing_since)}: {info.sync_last_error}")
+    if streams and streams["types"]:
+        lines.append(f"Streams         {streams['stored']} stored, {streams['waiting']} waiting to be fetched "
+                     f"({streams['unavailable']} activities have none)")
     lines += [
         f"Notifiers       {', '.join(settings.notifier_names) or 'none (set NOTIFIERS in .env)'}",
         f"Notify after    {settings.notify_after_minutes:g} minutes",

@@ -93,6 +93,7 @@ python main.py report                # open the browser report (no sync)
 python main.py status                # last sync, counts, notifiers, recent runs
 python main.py checks                # which checks exist and are enabled
 python main.py resync                # fetch the full history now
+python main.py fetch-streams         # fetch all activity streams the checks need now
 python main.py monitor --dry-run     # what the monitor would notify, printed instead of sent
 python main.py notify-test           # send a test notification
 ```
@@ -353,6 +354,10 @@ Everything lives in `data/` (set `DATA_DIR` to move it):
 - `logs/`: log files.
 - `intervals_auditor.lock`: prevents overlapping runs.
 
+The database also holds the activity streams the checks need (see
+`implausible_pace`), thinned to a point every 5 seconds and compressed:
+roughly 10 kB per activity.
+
 ## Checks
 
 Configuration is in `checks.toml`. Personal, account-specific overrides
@@ -405,20 +410,45 @@ misfires.
 
 ### implausible_pace
 
-Enabled. Flags an activity whose average speed (`distance / moving_time`)
-falls outside a plausible range for its activity type -- usually a GPS
-glitch, a wrong activity type, or bad distance/duration data. Built-in
-per-type bounds live in `intervals_auditor/checks/implausible_pace.py`
-(`DEFAULT_SPEED_BOUNDS_KMH`); override or add a type via
-`[implausible_pace.speed_kmh_by_type]` in `checks.toml`. Types with no
-meaningful pace (`WeightTraining`, `Workout`, `Transition`, `Elliptical`,
-...) are skipped automatically.
+Enabled. Finds speeds that don't fit the activity type -- a GPS glitch, the
+wrong activity type, or part of the activity done in a car, bus, lift or
+train. Three rules, each with a table per activity type in `checks.toml`
+(also shown and editable on the web interface's Checks page). A table is
+used as it is: a type that isn't listed isn't checked by that rule.
 
-Each bound is widened by `margin_kmh` (2.0 km/h by default) before anything
-is flagged, so a reading only a km/h or two past the line -- ordinary
-variation, not bad data -- is left alone. Lower `margin_kmh` in
-`checks.toml` for tighter sensitivity, or raise it if even the widened
-default still feels too eager.
+- **Average speed** (`distance / moving_time`) outside
+  `speed_kmh_by_type` = `[lowest, highest]` km/h. Each bound is widened by
+  `margin_kmh` (2.0) first, so a reading a km/h or two past the line --
+  ordinary variation, not bad data -- is left alone.
+- **Top speed** above `max_speed_kmh_by_type` (e.g. 20 km/h for Hike and
+  Walk, 100 for Ride). This is the max speed the device recorded; on foot, a
+  spike far above it is a GPS glitch or a ride in a vehicle.
+- **Sustained speed for the grade**: the average speed over any
+  `sustained_seconds` (60) must not be faster than
+  `sustained_speed_kmh_by_grade` allows for the grade there. The table has
+  `[grade %, km/h]` points per type, linear in between. Downhill a bike can
+  be as fast as a car (100 km/h at -8%), uphill it can't (32 km/h at +6%,
+  24 at +10%), so a car, bus or lift ride inside a ride or hike shows up on
+  the climbs. The issue says how fast, at what grade and where in the
+  activity (h:mm:ss from the start), and for how long it was too fast.
+  Where the grade can't be told (no altitude), the table's highest speed
+  applies. GPS jumps count at 150 km/h at most, so a single bad point can't
+  make a whole minute look fast.
+
+Top speed and sustained speed skip indoor and trainer sessions (their speed
+is virtual). All findings on one activity make one issue.
+
+The sustained rule needs each activity's **streams** (time, distance and
+altitude over the activity), which the summary Intervals.icu lists doesn't
+have. They're fetched separately for the types in
+`sustained_speed_kmh_by_grade`, one request per activity: new activities
+right away, the rest of the history at most `STREAMS_PER_RUN` (100) per
+run, newest first -- or all at once with `python main.py fetch-streams`
+(then `python main.py run --offline` to check them). An activity is fetched
+again only if it changes. `python main.py status` (and the web interface's
+Status page) shows how many are stored and waiting. Activities that came
+from Strava have no streams on Intervals.icu, so only their summary is
+checked.
 
 ### missing_distance
 
@@ -466,9 +496,12 @@ below them:
   `report.html` and the web interface.
 - `intervals_auditor/app.py`: wires settings, database, services and clients; any
   interface creates an `App` and calls its services.
-- `intervals_auditor/services/`: sync, Strava enrichment, checks/issue tracking
-  (`audit`), acknowledgments, queries for views, runner and monitor. They
-  return result objects and log; they never print.
+- `intervals_auditor/services/`: sync, Strava enrichment, fetching
+  activity streams, checks/issue tracking (`audit`), acknowledgments,
+  queries for views, runner and monitor. They return result objects and
+  log; they never print.
+- `intervals_auditor/streams.py`: activity streams -- how they're stored,
+  and the per-minute speed/grade windows the checks look at.
 - `intervals_auditor/models.py`: the domain types (`Activity`, `Issue`,
   `IssueRecord`, `Acknowledgment`).
 - `intervals_auditor/views.py`: activity-centric read models (`ActivityView`,

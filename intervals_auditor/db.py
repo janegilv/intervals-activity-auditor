@@ -159,7 +159,25 @@ def _migration_3(conn: sqlite3.Connection) -> None:
     """)
 
 
-MIGRATIONS = [_migration_1, _migration_2, _migration_3]
+def _migration_4(conn: sqlite3.Connection) -> None:
+    """Activity streams (time series) for the checks that need them, see
+    streams.py. `version` says which recording they were fetched from;
+    status 'unavailable' remembers that there are none (not retried until
+    the activity changes), 'error' that fetching failed (retried)."""
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS activity_streams (
+        activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+        version TEXT NOT NULL,
+        status TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        point_count INTEGER NOT NULL DEFAULT 0,
+        data BLOB,
+        error TEXT
+    );
+    """)
+
+
+MIGRATIONS = [_migration_1, _migration_2, _migration_3, _migration_4]
 SCHEMA_VERSION = len(MIGRATIONS)
 
 

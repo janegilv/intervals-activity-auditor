@@ -12,6 +12,8 @@ from typing import Iterable
 from intervals_auditor.db import Database
 from intervals_auditor.fingerprint import activity_fingerprint
 from intervals_auditor.models import Acknowledgment, Activity, Issue, IssueRecord
+from intervals_auditor.streams import Streams
+from intervals_auditor.streams import decode as decode_streams, encode as encode_streams
 
 STRAVA_SOURCE = "STRAVA"
 STRAVA_STUB_MARKER = "_note"  # present only on Intervals.icu's un-fetched Strava placeholder
@@ -323,6 +325,54 @@ class CheckSettingRepository:
             self.conn.execute("DELETE FROM check_settings WHERE check_name = ?", (check_name,))
         else:
             self.conn.execute("DELETE FROM check_settings WHERE check_name = ? AND key = ?", (check_name, key))
+
+
+@dataclass
+class StreamRecord:
+    activity_id: str
+    version: str
+    status: str  # ok | unavailable | error
+    fetched_at: str
+    point_count: int = 0
+    error: str | None = None
+
+
+class StreamRepository:
+    """Stored activity streams (see streams.py)."""
+
+    def __init__(self, db: Database):
+        self.conn = db.conn
+
+    def records(self) -> dict[str, StreamRecord]:
+        """What's stored for each activity, without the data itself."""
+        rows = self.conn.execute(
+            "SELECT activity_id, version, status, fetched_at, point_count, error FROM activity_streams")
+        return {r["activity_id"]: StreamRecord(r["activity_id"], r["version"], r["status"], r["fetched_at"],
+                                               r["point_count"], r["error"]) for r in rows}
+
+    def get(self, activity_id: str, version: str | None = None) -> Streams | None:
+        """The activity's streams, if stored (and fetched from `version`)."""
+        row = self.conn.execute(
+            "SELECT version, data FROM activity_streams WHERE activity_id = ? AND status = 'ok'",
+            (activity_id,)).fetchone()
+        if row is None or row["data"] is None or (version is not None and row["version"] != version):
+            return None
+        return decode_streams(row["data"])
+
+    def save(self, activity_id: str, version: str, now: str, streams: Streams | None, *,
+             status: str | None = None, error: str | None = None) -> None:
+        status = status or ("ok" if streams is not None else "unavailable")
+        self.conn.execute("""
+        INSERT INTO activity_streams (activity_id, version, status, fetched_at, point_count, data, error)
+        VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(activity_id) DO UPDATE SET
+            version=excluded.version, status=excluded.status, fetched_at=excluded.fetched_at,
+            point_count=excluded.point_count, data=excluded.data, error=excluded.error
+        """, (activity_id, version, status, now, len(streams) if streams else 0,
+              encode_streams(streams) if streams else None, error))
+
+    def counts(self) -> dict[str, int]:
+        return dict(self.conn.execute("SELECT status, COUNT(*) FROM activity_streams GROUP BY status").fetchall())
 
 
 class StateRepository:

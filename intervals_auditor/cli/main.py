@@ -25,7 +25,7 @@ from intervals_auditor.views import ACKNOWLEDGED, OPEN
 
 log = logging.getLogger("intervals_auditor.cli")
 
-CHATTY_COMMANDS = {"run", "monitor", "resync", "serve"}
+CHATTY_COMMANDS = {"run", "monitor", "resync", "serve", "fetch-streams"}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -117,6 +117,10 @@ examples:
                    help="Remove missing activities even if it's a large share (skips the safety guard).")
 
     command("notify-test", "Send a test message through the configured notifiers.")
+
+    p = command("fetch-streams", "Fetch the activity streams (time series) the checks need now, "
+                                 "instead of STREAMS_PER_RUN per run.")
+    p.add_argument("--limit", type=int, help="At most this many activities (default: all that are waiting).")
 
     p = command("serve", "Run the web interface (and the scheduled monitor) until stopped.")
     p.add_argument("--host", help="Address to listen on (WEB_HOST, default 127.0.0.1; 0.0.0.0 lets other machines in).")
@@ -324,8 +328,23 @@ def cmd_serve(settings, args) -> int:
 
 
 def cmd_status(app: App, args) -> int:
-    print(render.status(app.queries.status(), app.settings))
+    print(render.status(app.queries.status(), app.settings, app.stream_status()))
     return 0
+
+
+def cmd_fetch_streams(app: App, args) -> int:
+    types = app.audit.stream_activity_types()
+    if not types:
+        print("No enabled check needs activity streams.")
+        return 0
+    with app.lock():
+        result = app.stream_service().fetch(types, limit=args.limit)
+    print(render.streams_summary(result))
+    if result.rate_limited:
+        print("Intervals.icu asked us to slow down; run this again later (or let the monitor continue).")
+    if result.fetched:
+        print(f"Run the checks with them: {render.cli_prefix()} run --offline")
+    return 1 if result.errors and not result.fetched else 0
 
 
 def cmd_notify_test(app: App, args) -> int:
@@ -367,6 +386,7 @@ COMMANDS = {
     "ack": cmd_ack, "unack": cmd_unack, "acks": cmd_acks, "status": cmd_status, "report": cmd_report,
     "checks": cmd_checks,
     "notify-test": cmd_notify_test, "strava-export": cmd_strava_export, "strava-import": cmd_strava_import,
+    "fetch-streams": cmd_fetch_streams,
 }
 
 

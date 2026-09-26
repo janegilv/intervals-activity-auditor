@@ -18,7 +18,10 @@ from dataclasses import dataclass, field
 from intervals_auditor.checks import CHECKS
 from intervals_auditor.db import Database
 from intervals_auditor.models import SEVERITY_RANK, Acknowledgment, Activity, Issue, IssueRecord
-from intervals_auditor.repositories import AcknowledgmentRepository, ActivityRepository, IssueRepository
+from intervals_auditor.repositories import (
+    AcknowledgmentRepository, ActivityRepository, IssueRepository, StreamRepository,
+)
+from intervals_auditor.streams import version_of
 from intervals_auditor.timeutil import to_iso
 
 log = logging.getLogger(__name__)
@@ -46,22 +49,36 @@ class AuditResult:
 
 class AuditService:
     def __init__(self, db: Database, activities: ActivityRepository, issues: IssueRepository,
-                 acks: AcknowledgmentRepository, check_config: dict, *, clock):
+                 acks: AcknowledgmentRepository, check_config: dict, *, clock,
+                 streams: StreamRepository | None = None):
         self.db = db
         self.activities = activities
         self.issues = issues
         self.acks = acks
         self.check_config = check_config
         self.clock = clock
+        self.streams = streams
 
     def enabled_checks(self) -> list[str]:
         return [name for name in CHECKS if self.check_config.get(name, {}).get("enabled", False)]
+
+    def stream_activity_types(self) -> set[str]:
+        """Activity types the enabled checks need streams for."""
+        types = set()
+        for name in self.enabled_checks():
+            types |= CHECKS[name].stream_activity_types(self.check_config.get(name, {}))
+        return types
+
+    def _stored_streams(self, activity: Activity):
+        # Only streams fetched from the activity as it is now; stale ones wait
+        # for the next sync to fetch them again.
+        return self.streams.get(activity.id, version_of(activity)) if self.streams else None
 
     def run_checks(self, activities: list[Activity], names: list[str]) -> tuple[dict[str, Issue], dict[str, int]]:
         found: dict[str, Issue] = {}
         counts: dict[str, int] = {}
         for name in names:
-            check = CHECKS[name](self.check_config.get(name, {}))
+            check = CHECKS[name](self.check_config.get(name, {}), streams=self._stored_streams)
             issues = check.run(activities)
             counts[name] = len(issues)
             log.debug("Check %s: %d issue(s)", name, len(issues))

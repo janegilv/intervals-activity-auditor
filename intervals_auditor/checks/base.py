@@ -14,8 +14,22 @@ class ActivityCheck:
     name = "base"
     description = ""
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, streams=None):
         self.config = config or {}
+        # streams(activity) -> Streams | None: the activity's stored time
+        # series, for the types stream_activity_types() asks for.
+        self.streams = streams or (lambda activity: None)
+
+    @classmethod
+    def validate_config(cls, config: dict) -> None:
+        """Raise ValueError if the settings can't work (checked before a
+        change from the web interface is saved)."""
+
+    @classmethod
+    def stream_activity_types(cls, config: dict) -> set[str]:
+        """Activity types this check needs streams (time series) for; they're
+        fetched from Intervals.icu during a sync. Most checks need none."""
+        return set()
 
     def run(self, activities: list[Activity]) -> list[Issue]:
         raise NotImplementedError

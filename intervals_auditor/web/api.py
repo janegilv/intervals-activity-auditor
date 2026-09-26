@@ -100,6 +100,7 @@ def create_app(settings: Settings, *, app_factory=App, scheduler: bool = True, c
             "notify_after_minutes": settings.notify_after_minutes,
             "credentials": {"intervals": settings.has_intervals_credentials, "strava": settings.has_strava_credentials},
             "monitor": monitor.as_dict(),
+            "streams": app.stream_status(),
             "jobs": jobs.status(),
         }
 

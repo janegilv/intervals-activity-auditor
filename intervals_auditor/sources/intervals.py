@@ -25,3 +25,24 @@ class IntervalsClient:
                   len(response.content), time.monotonic() - started)
         response.raise_for_status()
         return response.json()
+
+    def get_streams(self, activity_id: str, types: tuple[str, ...]) -> list | dict | None:
+        """The activity's streams (time series) of the given types, or None
+        if Intervals.icu has none for it (e.g. an activity that came from
+        Strava, whose data Intervals.icu can't hand out)."""
+        url = f"{BASE_URL}/activity/{activity_id}/streams.json"
+        params = {"types": ",".join(types)}
+        started = time.monotonic()
+        response = requests.get(url, params=params, auth=("API_KEY", self.api_key), timeout=self.timeout)
+        log.debug("GET %s %s -> %s (%d bytes, %.1fs)", url, params, response.status_code,
+                  len(response.content), time.monotonic() - started)
+        if response.status_code == 429:
+            raise IntervalsRateLimitError(response.headers.get("Retry-After") or "too many requests")
+        if response.status_code in (404, 422):
+            return None
+        response.raise_for_status()
+        return response.json()
+
+
+class IntervalsRateLimitError(RuntimeError):
+    pass

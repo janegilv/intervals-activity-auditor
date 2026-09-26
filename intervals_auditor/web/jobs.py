@@ -55,6 +55,10 @@ def summarize_run(result: RunResult) -> str:
         parts.append(f"{len(a.new)} new, {len(a.reopened)} reopened and {len(a.resolved)} resolved issues")
     if result.strava_error:
         parts.append(result.strava_error)
+    if result.streams and (result.streams.fetched or result.streams.unavailable):
+        parts.append(f"fetched streams for {result.streams.fetched} activities ({result.streams.remaining} waiting)")
+    if result.streams_error:
+        parts.append(result.streams_error)
     text = "; ".join(parts) or "done"
     return text[0].upper() + text[1:]
 

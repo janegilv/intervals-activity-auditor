@@ -23,20 +23,68 @@ maximum_duration_seconds = 86400
 
 [implausible_pace]
 enabled = true
-# Each type's bound is widened by this many km/h before anything is flagged
-# -- a reading a couple of km/h past the line is normal variation, not bad
-# data, so only a genuinely implausible reading (well past the widened
-# range) gets reported.
+# Speeds that don't fit the activity type: a GPS glitch, the wrong type, or
+# part of the activity done in a car, bus, lift or train. Three rules, each
+# with a table per activity type below. A table is used as it is: a type
+# that isn't listed isn't checked by that rule (copy the whole table if you
+# override it in checks.local.toml).
+
+# Rule 1: the average speed (distance / moving time) must be within
+# [lowest, highest] km/h, widened by margin_kmh -- a reading a km/h or two
+# past the line is ordinary variation, not bad data.
 margin_kmh = 2.0
-# Average-speed bounds (km/h) per activity type -- a value outside its range
-# (plus margin_kmh above) usually means a GPS glitch, a wrong activity type,
-# or bad distance/duration data. Built-in defaults (intervals_auditor/checks/implausible_pace.py)
-# cover the types seen in this account already; only list a type below to
-# override its default. Types with no meaningful "pace" (WeightTraining,
-# Workout, Transition, Elliptical, ...) are skipped automatically -- no need
-# to list them.
+# Rule 3: the average speed over any stretch of this many seconds must not be
+# faster than sustained_speed_kmh_by_grade allows for the grade there.
+sustained_seconds = 60
+
 [implausible_pace.speed_kmh_by_type]
-# Run = [3, 30]
+Run = [3, 30]
+TrailRun = [2, 30]
+Walk = [1, 8]
+Hike = [1, 8]
+Ride = [3, 70]
+GravelRide = [3, 65]
+MountainBikeRide = [2, 55]
+VirtualRide = [3, 70]
+NordicSki = [2, 45]
+AlpineSki = [2, 90]
+OpenWaterSwim = [1, 8]
+IceSkate = [2, 45]
+VirtualRow = [2, 25]
+
+# Rule 2: the top speed the device recorded (km/h). A spike far above this
+# on foot is a GPS glitch or a ride in a vehicle. Indoor/trainer sessions
+# are skipped (their speed is virtual).
+[implausible_pace.max_speed_kmh_by_type]
+Walk = 20
+Hike = 20
+Run = 30
+TrailRun = 35
+Ride = 100
+GravelRide = 100
+MountainBikeRide = 80
+EBikeRide = 100
+NordicSki = 60
+AlpineSki = 130
+IceSkate = 50
+
+# Rule 3: the highest plausible average speed (km/h) over sustained_seconds,
+# by grade, as [grade %, km/h] points -- linear in between, flat beyond the
+# ends. Downhill a bike can be as fast as a car, uphill it can't, so a car,
+# bus, train or lift ride inside an activity shows up on the climbs. Needs
+# the activity's streams, which are fetched from Intervals.icu for the types
+# listed here (STREAMS_PER_RUN per run, or all at once with fetch-streams).
+# Where the grade can't be told (no altitude), the highest speed in the
+# table applies.
+[implausible_pace.sustained_speed_kmh_by_grade]
+Ride = [[-8, 100], [-4, 80], [0, 60], [3, 42], [6, 32], [10, 24], [15, 18]]
+GravelRide = [[-8, 100], [-4, 80], [0, 60], [3, 42], [6, 32], [10, 24], [15, 18]]
+MountainBikeRide = [[-8, 100], [-4, 80], [0, 60], [3, 42], [6, 32], [10, 24], [15, 18]]
+EBikeRide = [[-8, 100], [-4, 80], [0, 60], [3, 45], [6, 38], [10, 32], [15, 28]]
+Run = [[-10, 30], [0, 26], [5, 20], [10, 16], [20, 11], [30, 8]]
+TrailRun = [[-10, 30], [0, 26], [5, 20], [10, 16], [20, 11], [30, 8]]
+Walk = [[-15, 22], [0, 18], [10, 12], [20, 9], [30, 7]]
+Hike = [[-15, 22], [0, 18], [10, 12], [20, 9], [30, 7]]
 
 [missing_distance]
 enabled = true

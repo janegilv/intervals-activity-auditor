@@ -1,5 +1,5 @@
-"""One audit run: sync from Intervals.icu, fill in Strava placeholders, run
-the checks, and write the reports. Used by both `run` and `monitor`.
+"""One audit run: sync from Intervals.icu, fill in Strava placeholders, fetch
+the streams the checks need, run the checks, and write the reports. Used by both `run` and `monitor`.
 
 A failing sync (network down, Intervals.icu unavailable) doesn't stop the
 run -- the checks still run on the stored data -- but it's logged, kept in
@@ -18,6 +18,7 @@ from intervals_auditor.repositories import ActivityRepository, RunRepository, St
 from intervals_auditor.services.audit import AuditResult, AuditService
 from intervals_auditor.services.queries import STATE_SYNC_FAILING_SINCE, STATE_SYNC_LAST_ERROR, QueryService
 from intervals_auditor.services.strava import EnrichResult, enrich_strava_stubs
+from intervals_auditor.services.streams import StreamsResult
 from intervals_auditor.services.sync import SyncResult, SyncService
 from intervals_auditor.timeutil import to_iso
 
@@ -33,6 +34,8 @@ class RunResult:
     sync_error: str | None = None
     strava: EnrichResult | None = None
     strava_error: str | None = None
+    streams: StreamsResult | None = None
+    streams_error: str | None = None
     audit: AuditResult | None = None
     report_paths: list[Path] = field(default_factory=list)
 
@@ -43,6 +46,8 @@ class RunResult:
             "sync_error": self.sync_error,
             "strava": self.strava.as_dict() if self.strava else None,
             "strava_error": self.strava_error,
+            "streams": self.streams.as_dict() if self.streams else None,
+            "streams_error": self.streams_error,
             "audit": self.audit.as_dict() if self.audit else None,
         }
 
@@ -58,7 +63,8 @@ class RunService:
     def __init__(self, *, db: Database, activities: ActivityRepository, runs: RunRepository,
                  state: StateRepository, audit: AuditService, queries: QueryService,
                  sync_factory: Callable[[], SyncService], strava_factory: Callable[[], object | None],
-                 output_dir: Path, clock):
+                 output_dir: Path, clock, streams_factory: Callable[[], object] | None = None,
+                 streams_per_run: int = 0):
         self.db = db
         self.activities = activities
         self.runs = runs
@@ -69,6 +75,8 @@ class RunService:
         self.strava_factory = strava_factory
         self.output_dir = output_dir
         self.clock = clock
+        self.streams_factory = streams_factory
+        self.streams_per_run = streams_per_run
 
     def run(self, *, command: str = "run", offline: bool = False, only: list[str] | None = None,
             full: bool | None = None, force_prune: bool = False, reports: bool = True) -> RunResult:
@@ -88,10 +96,10 @@ class RunService:
             if not isinstance(e, ConfigError):  # the CLI reports configuration errors itself
                 log.error("=== %s failed (run #%d): %s", command, run_id, describe_error(e))
             raise
-        status = "ok" if not (result.sync_error or result.strava_error) else "degraded"
+        error = result.sync_error or result.strava_error or result.streams_error
+        status = "degraded" if error else "ok"
         with self.db.transaction():
-            self.runs.finish(run_id, to_iso(self.clock()), status, result.as_dict(),
-                             result.sync_error or result.strava_error)
+            self.runs.finish(run_id, to_iso(self.clock()), status, result.as_dict(), error)
         log.info("=== %s finished (run #%d, %s)", command, run_id, status)
         return result
 
@@ -123,9 +131,22 @@ class RunService:
         strava_client = self.strava_factory()
         if strava_client is None:
             log.debug("Strava credentials not configured; skipping Strava enrichment")
+        else:
+            try:
+                result.strava = enrich_strava_stubs(self.db, self.activities, strava_client, clock=self.clock)
+            except Exception as e:  # noqa: BLE001 - e.g. a revoked Strava token
+                result.strava_error = f"Strava: {describe_error(e)}"
+                log.error("Strava enrichment failed: %s", e)
+
+        self.fetch_streams(result, limit=self.streams_per_run)
+
+    def fetch_streams(self, result: RunResult, *, limit: int | None) -> None:
+        """Fetch streams the enabled checks need (at most `limit`, 0 = none)."""
+        types = self.audit.stream_activity_types()
+        if not types or self.streams_factory is None or limit == 0:
             return
         try:
-            result.strava = enrich_strava_stubs(self.db, self.activities, strava_client, clock=self.clock)
-        except Exception as e:  # noqa: BLE001 - e.g. a revoked Strava token
-            result.strava_error = f"Strava: {describe_error(e)}"
-            log.error("Strava enrichment failed: %s", e)
+            result.streams = self.streams_factory().fetch(types, limit=limit)
+        except Exception as e:  # noqa: BLE001 - the checks still run with what's stored
+            result.streams_error = f"Streams: {describe_error(e)}"
+            log.error("Fetching streams failed: %s", result.streams_error)

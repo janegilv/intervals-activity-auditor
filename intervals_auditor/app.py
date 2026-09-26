@@ -12,7 +12,7 @@ from intervals_auditor.lock import RunLock
 from intervals_auditor.notifiers import Notifier, build_notifiers
 from intervals_auditor.repositories import (
     AcknowledgmentRepository, ActivityRepository, CheckSettingRepository, IssueRepository, RunRepository,
-    StateRepository,
+    StateRepository, StreamRepository,
 )
 from intervals_auditor.services.acks import AckService
 from intervals_auditor.services.audit import AuditService
@@ -20,6 +20,7 @@ from intervals_auditor.services.check_settings import CheckSettingsService
 from intervals_auditor.services.monitor import MonitorService
 from intervals_auditor.services.queries import QueryService
 from intervals_auditor.services.runner import RunService
+from intervals_auditor.services.streams import StreamService
 from intervals_auditor.services.sync import SyncService
 from intervals_auditor.sources.intervals import IntervalsClient
 from intervals_auditor.sources.strava import StravaClient
@@ -48,18 +49,20 @@ class App:
         self.acks = AcknowledgmentRepository(self.db)
         self.state = StateRepository(self.db)
         self.runs = RunRepository(self.db)
+        self.streams = StreamRepository(self.db)
 
         self.queries = QueryService(self.activities, self.issues, self.acks, self.state, self.runs)
         # checks.toml / checks.local.toml, plus changes made in the web interface.
         self.check_settings = CheckSettingsService(self.db, CheckSettingRepository(self.db), settings.checks,
                                                    clock=clock)
         self.audit = AuditService(self.db, self.activities, self.issues, self.acks,
-                                  self.check_settings.effective(), clock=clock)
+                                  self.check_settings.effective(), clock=clock, streams=self.streams)
         self.ack_service = AckService(self.db, self.activities, self.issues, self.acks, clock=clock)
         self.runner = RunService(
             db=self.db, activities=self.activities, runs=self.runs, state=self.state, audit=self.audit,
             queries=self.queries, sync_factory=self.sync_service, strava_factory=self.strava_client,
             output_dir=settings.output_dir, clock=clock,
+            streams_factory=self.stream_service, streams_per_run=settings.streams_per_run,
         )
 
     def intervals_client(self):
@@ -97,6 +100,18 @@ class App:
         return SyncService(self.db, self.activities, self.state, self.intervals_client(),
                            refresh_days=self.settings.refresh_days,
                            full_sync_interval_hours=self.settings.full_sync_interval_hours, clock=self.clock)
+
+    def stream_service(self) -> StreamService:
+        return StreamService(self.db, self.activities, self.streams, self.intervals_client(), clock=self.clock)
+
+    def stream_status(self) -> dict:
+        """How far fetching streams has come: stored, known to have none,
+        and still waiting to be fetched."""
+        counts = self.streams.counts()
+        types = self.audit.stream_activity_types()
+        waiting = StreamService(self.db, self.activities, self.streams, None, clock=self.clock).pending(types)
+        return {"stored": counts.get("ok", 0), "unavailable": counts.get("unavailable", 0),
+                "waiting": len(waiting) if types else 0, "types": sorted(types)}
 
     def notifiers(self) -> list[Notifier]:
         if self._notifiers is None:
