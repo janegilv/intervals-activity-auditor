@@ -235,8 +235,12 @@ One-time setup:
 2. Put the app's Client ID/Secret into `.env` as `STRAVA_CLIENT_ID` /
    `STRAVA_CLIENT_SECRET`.
 3. Run `python strava_auth_setup.py` and follow the prompts. It prints a
-   `STRAVA_REFRESH_TOKEN` to add to `.env`. The refresh token doesn't expire
-   unless you revoke the app's access on Strava.
+   `STRAVA_REFRESH_TOKEN` to add to `.env`.
+
+Strava replaces the refresh token now and then, and the old one stops
+working immediately. The newest one is stored in the database, so `.env`
+doesn't need updating. If you run `strava_auth_setup.py` again and put a
+new token in `.env`, that one takes over.
 
 A resolved Strava record is never overwritten by Intervals.icu's
 placeholder on later syncs, but if Intervals.icu gets real data of its own

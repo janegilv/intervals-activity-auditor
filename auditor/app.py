@@ -25,6 +25,11 @@ from auditor.timeutil import utcnow
 
 log = logging.getLogger(__name__)
 
+# Strava rotates refresh tokens; the latest one is kept in the database,
+# together with the .env token it was derived from.
+STATE_STRAVA_REFRESH_TOKEN = "strava_refresh_token"
+STATE_STRAVA_REFRESH_TOKEN_FROM = "strava_refresh_token_env"
+
 
 def prepare_database(settings: Settings) -> bool:
     """First start after upgrading: copy the old cache database (with its
@@ -76,8 +81,24 @@ class App:
         if self._strava_client is None and self.settings.has_strava_credentials:
             s = self.settings
             self._strava_client = StravaClient(s.strava_client_id, s.strava_client_secret,
-                                               s.strava_refresh_token, s.request_timeout)
+                                               self.strava_refresh_token(), s.request_timeout,
+                                               on_refresh_token=self.store_strava_refresh_token)
         return self._strava_client
+
+    def strava_refresh_token(self) -> str:
+        """The latest refresh token Strava gave us, unless STRAVA_REFRESH_TOKEN
+        in .env has changed since (you re-authorized): then that one wins."""
+        env_token = self.settings.strava_refresh_token
+        stored = self.state.get(STATE_STRAVA_REFRESH_TOKEN)
+        if stored and self.state.get(STATE_STRAVA_REFRESH_TOKEN_FROM) == env_token:
+            return stored
+        return env_token
+
+    def store_strava_refresh_token(self, token: str) -> None:
+        with self.db.transaction():
+            self.state.set(STATE_STRAVA_REFRESH_TOKEN, token)
+            self.state.set(STATE_STRAVA_REFRESH_TOKEN_FROM, self.settings.strava_refresh_token)
+        log.info("Stored Strava's new refresh token in the database")
 
     def sync_service(self) -> SyncService:
         return SyncService(self.db, self.activities, self.state, self.intervals_client(),

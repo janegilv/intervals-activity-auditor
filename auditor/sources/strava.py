@@ -30,11 +30,15 @@ class StravaClient:
     read-only design.
     """
 
-    def __init__(self, client_id: str, client_secret: str, refresh_token: str, timeout: int = 30):
+    def __init__(self, client_id: str, client_secret: str, refresh_token: str, timeout: int = 30,
+                 on_refresh_token=None):
         self.client_id = client_id
         self.client_secret = client_secret
         self.refresh_token = refresh_token
         self.timeout = timeout
+        # Called with the new refresh token whenever Strava rotates it, so
+        # the caller can store it (the old one stops working immediately).
+        self.on_refresh_token = on_refresh_token
         self._access_token = None
         self._expires_at = 0
 
@@ -60,10 +64,15 @@ class StravaClient:
         payload = response.json()
         self._access_token = payload["access_token"]
         self._expires_at = payload["expires_at"]
-        # Strava may issue a new refresh_token on each refresh; track the latest
-        # one so a long-running process keeps working, but note this in-memory
-        # value is NOT written back to .env -- see strava_enrich's note to the user.
-        self.refresh_token = payload.get("refresh_token", self.refresh_token)
+        # Strava can issue a new refresh token on any refresh, and "once a new
+        # refresh token is returned, the older refresh token is invalidated
+        # immediately" -- so it must be kept for the next run.
+        new_token = payload.get("refresh_token")
+        if new_token and new_token != self.refresh_token:
+            self.refresh_token = new_token
+            log.info("Strava issued a new refresh token")
+            if self.on_refresh_token:
+                self.on_refresh_token(new_token)
         return self._access_token
 
     def get_activity(self, activity_id: str) -> dict | None:
