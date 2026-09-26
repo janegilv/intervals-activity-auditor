@@ -107,9 +107,10 @@ Every run (including the scheduled monitor) also writes reports to
   and one `unack` for the acknowledged ones. "Select all" above the list
   ticks everything the current filters show. Each issue also has its own
   copy button. `ack` and `unack` update the report files, so after
-  running the command just reload the page; your search and filters are
-  kept. The command prefix (`python main.py`, `./main.py`, ...) can be
-  changed at the bottom of the page.
+  running the command just reload the page. The command prefix
+  (`python main.py`, `./main.py`, ...) can be changed at the bottom of
+  the page. Filters and settings are kept while the tab is open (also
+  across reloads) and start fresh in a new tab.
 - `report.md`, `report.json` and `report.csv` (one row per activity
   issue) for reading, scripts and spreadsheets.
 

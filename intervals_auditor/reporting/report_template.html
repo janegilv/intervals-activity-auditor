@@ -247,11 +247,12 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     <div class="settings">
       Commands are copied as
       <input id="prefix" aria-label="Command prefix" spellcheck="false">
-      <span class="help">(e.g. <code>./main.py</code>; remembered in this browser).
+      <span class="help">(e.g. <code>./main.py</code>).
       Tip: tick issues (or "Select all" above the list, which follows the filters) to build one
       <code>ack</code> command for open ones and one <code>unack</code> command for acknowledged ones.
-      <code>ack</code>/<code>unack</code> update this file; reload the page afterwards (your search
-      and filters are kept). <kbd>/</kbd> search, <kbd>Esc</kbd> clear selection.</span>
+      <code>ack</code>/<code>unack</code> update this file; reload the page afterwards. Filters and
+      settings are kept while this tab is open, and start fresh in a new tab.
+      <kbd>/</kbd> search, <kbd>Esc</kbd> clear selection.</span>
     </div>
   </main>
 </div>
@@ -292,34 +293,30 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
     sort: "newest", details: false, prefix: DATA.command || "python main.py",
     selected: new Set(),
   };
+  // Everything the page remembers (tab, filters, search, sort, details,
+  // command prefix) lives in sessionStorage: it survives reloading this tab
+  // (e.g. after running an ack command) and is gone in a new tab.
   try {
-    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    if (saved.show) state.show = saved.show;
-    if (saved.sort) state.sort = saved.sort;
+    const saved = JSON.parse(sessionStorage.getItem(STORE_KEY) || "{}");
+    if (["open", "acknowledged", "all"].includes(saved.show)) state.show = saved.show;
+    if (typeof saved.sort === "string") state.sort = saved.sort;
     if (typeof saved.details === "boolean") state.details = saved.details;
-    if (saved.prefix) state.prefix = saved.prefix;
+    if (typeof saved.prefix === "string" && saved.prefix) state.prefix = saved.prefix;
+    if (typeof saved.q === "string") state.q = saved.q;
+    if (Array.isArray(saved.sev)) saved.sev.forEach((x) => state.sev.add(x));
+    if (Array.isArray(saved.checks)) saved.checks.forEach((x) => state.checks.add(x));
+    if (typeof saved.type === "string") state.type = saved.type;
   } catch (e) { /* storage unavailable: defaults are fine */ }
-  // Search and filters survive a reload of this tab (e.g. after running an
-  // ack command and reloading to see the result).
-  const FILTER_KEY = STORE_KEY + "-filters";
   try {
-    const f = JSON.parse(sessionStorage.getItem(FILTER_KEY) || "{}");
-    if (typeof f.q === "string") state.q = f.q;
-    if (Array.isArray(f.sev)) f.sev.forEach((s) => state.sev.add(s));
-    if (Array.isArray(f.checks)) f.checks.forEach((c) => state.checks.add(c));
-    if (typeof f.type === "string") state.type = f.type;
+    // Earlier versions kept settings across tabs; forget those.
+    localStorage.removeItem(STORE_KEY);
+    sessionStorage.removeItem(STORE_KEY + "-filters");
   } catch (e) { /* ignore */ }
-  function persistFilters() {
-    try {
-      sessionStorage.setItem(FILTER_KEY, JSON.stringify({
-        q: state.q, sev: [...state.sev], checks: [...state.checks], type: state.type,
-      }));
-    } catch (e) { /* ignore */ }
-  }
   function persist() {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({
+      sessionStorage.setItem(STORE_KEY, JSON.stringify({
         show: state.show, sort: state.sort, details: state.details, prefix: state.prefix,
+        q: state.q, sev: [...state.sev], checks: [...state.checks], type: state.type,
       }));
     } catch (e) { /* ignore */ }
   }
@@ -595,7 +592,7 @@ kbd { font-family: inherit; font-size: 12px; border: 1px solid var(--border); bo
   }
 
   function render() {
-    persistFilters();
+    persist();
     renderControls();
     renderList();
     renderSelection();
