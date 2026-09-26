@@ -96,7 +96,7 @@ class ActivityCache:
                 id=r["id"], name=r["name"], activity_type=r["activity_type"],
                 start_date_local=r["start_date_local"], start_date=r["start_date"],
                 moving_time=r["moving_time"], elapsed_time=r["elapsed_time"],
-                distance=r["distance"], raw=json.loads(r["raw_json"]), cached_at=r["cached_at"]
+                distance=r["distance"], raw=json.loads(r["raw_json"]), synced_at=r["cached_at"]
             ) for r in rows
         ]
 
