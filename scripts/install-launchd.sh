@@ -7,12 +7,12 @@
 #   scripts/install-launchd.sh --print    only print the plist
 #   INTERVAL_MINUTES=15 scripts/install-launchd.sh
 #
-# Output of the monitor goes to data/logs/auditor.log; launchd itself
+# Output of the monitor goes to data/logs/intervals_auditor.log; launchd itself
 # only captures warnings, errors and crashes in data/logs/launchd.log.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-LABEL="${LABEL:-local.intervals-activity-auditor.monitor}"
+LABEL="${LABEL:-local.intervals_auditor.monitor}"
 INTERVAL_MINUTES="${INTERVAL_MINUTES:-30}"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$PROJECT_DIR/data/logs"
@@ -71,7 +71,7 @@ if [[ "${1:-}" == "--print" ]]; then
     exit 0
 fi
 
-echo "Checking that the auditor runs with $PYTHON ..."
+echo "Checking that intervals_auditor runs with $PYTHON ..."
 "$PYTHON" "$PROJECT_DIR/main.py" status >/dev/null
 
 mkdir -p "$LOG_DIR" "$(dirname "$PLIST")"
@@ -86,5 +86,5 @@ echo "Installed $PLIST"
 echo "The monitor runs every $INTERVAL_MINUTES minutes (and now, at load)."
 echo "  Run it now:  launchctl kickstart -k $domain/$LABEL"
 echo "  Status:      launchctl print $domain/$LABEL | head -20"
-echo "  Logs:        tail -f $LOG_DIR/auditor.log"
+echo "  Logs:        tail -f $LOG_DIR/intervals_auditor.log"
 echo "  Remove:      scripts/uninstall-launchd.sh"

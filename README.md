@@ -25,7 +25,7 @@ Failed checks must manually be fixed, the script is "read-only"
 - https://www.fitfiletools.com/
   - Don't really like the section remover.
 - https://www.fitfileviewer.com/
-# Intervals.icu Activity Auditor
+# Intervals Auditor
 
 A read-only Python tool for auditing Intervals.icu activities. It keeps a
 local copy of your activities, runs a set of checks on **every activity**,
@@ -71,7 +71,7 @@ last 30 days, plus the whole history once a day.
 
 **Upgrading from the cache-only version:** on the first start the old
 `cache/intervals.sqlite` (including everything fetched from Strava) is
-copied to `data/auditor.sqlite`, which is used from then on. The old file
+copied to `data/intervals_auditor.sqlite`, which is used from then on. The old file
 is left untouched and can be deleted once you're happy.
 
 ## Everyday use
@@ -183,7 +183,7 @@ settings, and `send()`) and register it in `intervals_auditor/notifiers/__init__
 
 ## Logs
 
-- The log file is `data/logs/auditor.log` (rotated at 1 MB, 5 files kept),
+- The log file is `data/logs/intervals_auditor.log` (rotated at 1 MB, 5 files kept),
   at `LOG_LEVEL` (default `INFO`). INFO shows what each run did: sync
   counts, removed activities, new/reopened/resolved issues, revoked
   acknowledgments and notifications sent. DEBUG adds per-activity details
@@ -253,13 +253,13 @@ back up and restore the Strava-fetched data.
 
 Everything lives in `data/` (set `DATA_DIR` to move it):
 
-- `auditor.sqlite`: activities (including Strava data), issues and their
+- `intervals_auditor.sqlite`: activities (including Strava data), issues and their
   history, acknowledgments, and a log of runs. It's the application's own
   database, not a cache: don't delete it to refresh data, syncing picks up
   changes and deletions. Deleting it loses your acknowledgments and the
   Strava data.
 - `logs/`: log files.
-- `auditor.lock`: prevents overlapping runs.
+- `intervals_auditor.lock`: prevents overlapping runs.
 
 ## Checks
 

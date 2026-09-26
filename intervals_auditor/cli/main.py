@@ -1,7 +1,7 @@
 """Command-line interface. `python main.py --help` lists the commands.
 
 Output meant for you goes to stdout; what the application is doing goes
-to the log (stderr, plus data/logs/auditor.log). Commands that sync show
+to the log (stderr, plus data/logs/intervals_auditor.log). Commands that sync show
 INFO log lines by default; the query commands only show warnings unless
 you add -v.
 """
@@ -224,7 +224,7 @@ def cmd_notify_test(app: App, args) -> int:
         print("No notifiers configured. Set NOTIFIERS=pushover (and its settings) in .env.", file=sys.stderr)
         return 1
     notification = Notification(
-        title="Activity auditor test",
+        title="Intervals auditor test",
         summary="If you can read this, notifications work.",
         items=[NotificationItem(heading="Example activity", url="https://intervals.icu/activities",
                                 link_text="Intervals.icu", lines=["[INFO] example_check: nothing wrong"])],

@@ -131,10 +131,10 @@ class MonitorService:
             if alert_sent or failing_since is None or now - failing_since < self.health_after:
                 return None
             notification = Notification(
-                title="Activity auditor: sync failing",
+                title="Intervals auditor: sync failing",
                 summary=(f"Syncing with Intervals.icu has failed since {format_local(failing_since)}. "
                          f"Last error: {self.state.get(STATE_SYNC_LAST_ERROR)}"),
-                footer="See data/logs/auditor.log",
+                footer="See data/logs/intervals_auditor.log",
             )
             sent_to, _ = self._send(notification, notifiers)
             if sent_to:
@@ -143,7 +143,7 @@ class MonitorService:
                 log.warning("Sent sync-failing alert")
                 return "alert"
         elif alert_sent:
-            sent_to, _ = self._send(Notification(title="Activity auditor: sync working again",
+            sent_to, _ = self._send(Notification(title="Intervals auditor: sync working again",
                                                  summary="Syncing with Intervals.icu works again."), notifiers)
             if sent_to:
                 with self.db.transaction():

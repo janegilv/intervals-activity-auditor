@@ -36,7 +36,7 @@ class DiscordNotifier(Notifier):
 
     def build_payload(self, n: Notification) -> dict:
         return {
-            "username": "Activity auditor",
+            "username": "Intervals auditor",
             "allowed_mentions": {"parse": []},
             "embeds": [{
                 "title": n.title[:256],

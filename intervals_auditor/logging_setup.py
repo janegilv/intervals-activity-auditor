@@ -4,7 +4,7 @@ Two destinations:
 
 - the console (stderr), whose level depends on the command -- chatty for
   sync/monitor runs, quiet for query commands -- and on -v/-q/--log-level;
-- a rotating log file (data/logs/auditor.log by default) that always
+- a rotating log file (data/logs/intervals_auditor.log by default) that always
   records what the application did, at LOG_LEVEL (INFO unless changed).
 
 Levels used across the app:

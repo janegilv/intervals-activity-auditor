@@ -44,7 +44,7 @@ class Settings:
 
     @property
     def lock_path(self) -> Path:
-        return self.data_dir / "auditor.lock"
+        return self.data_dir / "intervals_auditor.lock"
 
     @property
     def has_intervals_credentials(self) -> bool:
@@ -112,9 +112,9 @@ def load_settings(root: Path = PROJECT_ROOT, environ=None) -> Settings:
         intervals_api_key=(env.get("INTERVALS_API_KEY") or "").strip(),
         intervals_athlete_id=(env.get("INTERVALS_ATHLETE_ID") or "").strip(),
         data_dir=data_dir,
-        db_path=path("DB_PATH", str(data_dir / "auditor.sqlite")),
+        db_path=path("DB_PATH", str(data_dir / "intervals_auditor.sqlite")),
         legacy_db_path=path("CACHE_DB", "cache/intervals.sqlite"),
-        log_file=path("LOG_FILE", str(data_dir / "logs" / "auditor.log")),
+        log_file=path("LOG_FILE", str(data_dir / "logs" / "intervals_auditor.log")),
         output_dir=path("OUTPUT_DIR", "output"),
         refresh_days=_number(env, "REFRESH_DAYS", 30),
         full_sync_interval_hours=_number(env, "FULL_SYNC_INTERVAL_HOURS", 24.0, float),

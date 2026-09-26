@@ -129,8 +129,8 @@ class MonitorTest(unittest.TestCase):
         self.intervals.fail = False
         self.assertEqual(self.monitor().run().health, "recovered")
         titles = [n.title for n in self.notifier.sent]
-        self.assertIn("Activity auditor: sync failing", titles)
-        self.assertIn("Activity auditor: sync working again", titles)
+        self.assertIn("Intervals auditor: sync failing", titles)
+        self.assertIn("Intervals auditor: sync working again", titles)
         self.assertEqual(self.r.runs.recent(1)[0].status, "ok")
 
 

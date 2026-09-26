@@ -1,7 +1,7 @@
 """Pushover (https://pushover.net): push notifications to your phone.
 
 Setup: log in at pushover.net, copy "Your User Key", then "Create an
-Application/API Token" (name it e.g. "Activity auditor") and copy its token.
+Application/API Token" (name it e.g. "Intervals auditor") and copy its token.
 
   NOTIFIERS=pushover
   PUSHOVER_USER_KEY=...
