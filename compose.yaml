@@ -1,0 +1,33 @@
+# docker compose up -d --build     then open http://<this machine>:8080/
+#
+# Credentials and the other settings come from .env (copy .env.example).
+# The database, logs and checks.local.toml live in ./data on this machine.
+services:
+  auditor:
+    build:
+      context: .
+      args:
+        # The user that owns ./data on this machine (`id -u` / `id -g`).
+        UID: ${AUDITOR_UID:-1000}
+        GID: ${AUDITOR_GID:-1000}
+    image: intervals-auditor
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Your time zone, for log timestamps and notifications.
+      TZ: Europe/Oslo
+      # Fixed paths inside the container; these win over the same names in .env.
+      DATA_DIR: /data
+      DB_PATH: /data/intervals_auditor.sqlite
+      LOG_FILE: /data/logs/intervals_auditor.log
+      OUTPUT_DIR: /data/output
+      CHECKS_LOCAL_FILE: /data/checks.local.toml
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: "8080"
+    volumes:
+      - ./data:/data
+    ports:
+      # There is no login yet: anyone who can reach this port can use the
+      # web interface. Use "127.0.0.1:8080:8080" to only allow this machine
+      # (and e.g. an SSH tunnel), or keep it on a network you trust.
+      - "8080:8080"

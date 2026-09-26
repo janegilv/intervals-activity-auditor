@@ -33,7 +33,8 @@ local copy of your activities, runs a set of checks on **every activity**,
 and tracks the issues it finds **per activity** over time: new, resolved,
 reopened, or acknowledged by you. Run it by hand from the CLI, or let the
 monitor run it on a schedule and notify you (Pushover or Discord) when a
-new activity has a problem.
+new activity has a problem. There's also a web interface, which can run
+on another machine in Docker.
 
 ## Safety
 
@@ -179,6 +180,76 @@ Notification rules:
   the ones you accept first if you don't want that.
 - If syncing with Intervals.icu keeps failing for `HEALTH_ALERT_AFTER_HOURS`
   (default 6) you get one warning, and one message when it works again.
+
+## Web interface
+
+```bash
+pip install -r requirements-web.txt
+python main.py serve              # http://127.0.0.1:8080/
+```
+
+The web interface shows the same activity-centric issue list as
+`report.html`, but acknowledging and unacknowledging happen right there
+(one issue, or tick several / "Select all" and do them in one go). Each
+activity has its own page with its issues, their history and its
+acknowledgments. There are pages for all acknowledgments (including
+revoked ones), for status (sync health, recent runs, the log, and buttons
+for sync, full resync and re-running the checks), and for the check
+settings. The JSON API behind it is documented at `/api/docs`.
+
+While it runs, the server also runs the monitor every
+`MONITOR_INTERVAL_MINUTES` (default 30; first run a minute after start), so
+it replaces the launchd job: run `scripts/uninstall-launchd.sh` first, or
+you'll get notifications twice. To keep launchd instead, start it with
+`--no-monitor` (or set `MONITOR_INTERVAL_MINUTES=0`). The CLI keeps working
+next to it; they share the database, and the lock file keeps runs from
+overlapping.
+
+Check settings you change in the web interface are stored in the database
+and win over `checks.toml`/`checks.local.toml`; saving re-runs the checks.
+`python main.py checks` shows what was changed, and "Reset to file" in the
+web interface removes the changes again.
+
+**There is no login yet.** By default the server only listens on this
+machine (`WEB_HOST=127.0.0.1`). `--host 0.0.0.0` (or `WEB_HOST`) lets other
+machines in; only do that on a network you trust. Authentication will go in
+`intervals_auditor/web/security.py`, which every page and API call already
+goes through.
+
+## Running on a server with Docker
+
+`Dockerfile` and `compose.yaml` run the web interface and the monitor in
+one container. Everything that changes lives in `./data` on the server
+(mounted at `/data`): the database, logs, reports and your
+`checks.local.toml`. Settings and credentials come from `.env`.
+
+1. Get the project onto the server (`git clone`, then check out this
+   branch), and copy your `.env` next to `compose.yaml`.
+2. Move the database from the Mac so the history and your
+   acknowledgments come along. Stop everything that uses it first
+   (`scripts/uninstall-launchd.sh`, and any running `serve`), then copy
+   `data/intervals_auditor.sqlite` into `data/` on the server; if
+   `intervals_auditor.sqlite-wal`/`-shm` files are still there, copy them
+   too. Put `checks.local.toml` in `data/` as well. The Strava refresh
+   token is stored in the database, so it moves with it.
+3. Check `compose.yaml`: `TZ` (your time zone), and `AUDITOR_UID`/`AUDITOR_GID`
+   if `data/` isn't owned by user 1000 on the server (set them in `.env`,
+   e.g. `AUDITOR_UID=1026`).
+4. Start it and open `http://<server>:8080/`:
+
+   ```bash
+   docker compose up -d --build
+   docker compose logs -f                              # console output
+   docker compose exec auditor python main.py status   # the CLI works too
+   ```
+
+5. To update: `git pull && docker compose up -d --build`.
+
+Only let one place run the monitor (the Mac *or* the server), otherwise
+you get every notification twice and two databases drift apart. The port is
+published on all of the server's addresses; there is no login yet, so keep
+it on a network you trust, or change the port mapping to
+`127.0.0.1:8080:8080` and reach it through an SSH tunnel or similar.
 
 ## Notifications
 
@@ -384,10 +455,15 @@ New checks automatically appear in the CLI, reports and notifications.
 
 ## Code layout
 
-The code is layered so another interface (e.g. a web UI) can reuse
-everything below the CLI:
+The code is layered so the CLI and the web interface share everything
+below them:
 
 - `intervals_auditor/cli/`: argument parsing and text output only.
+- `intervals_auditor/web/`: the web interface: a FastAPI JSON API
+  (`api.py`), background jobs and the monitor schedule (`jobs.py`), and the
+  single-page frontend (`static/`).
+- `intervals_auditor/ui/`: the issue browser (JavaScript and CSS) shared by
+  `report.html` and the web interface.
 - `intervals_auditor/app.py`: wires settings, database, services and clients; any
   interface creates an `App` and calls its services.
 - `intervals_auditor/services/`: sync, Strava enrichment, checks/issue tracking
@@ -400,7 +476,9 @@ everything below the CLI:
 - `intervals_auditor/repositories.py`, `intervals_auditor/db.py`: SQLite
   access and schema migrations (add a function to `MIGRATIONS` in `db.py`
   to change the schema).
-- `intervals_auditor/config.py`: settings from `.env` and `checks.toml`.
+- `intervals_auditor/config.py`: settings from `.env` and `checks.toml`
+  (changes made in the web interface are applied on top by
+  `services/check_settings.py`).
 - `intervals_auditor/checks/`, `intervals_auditor/notifiers/`,
   `intervals_auditor/sources/` (API clients), and
   `intervals_auditor/reporting/` (the browser report's page is

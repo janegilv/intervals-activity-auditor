@@ -1,0 +1,19 @@
+# Keep secrets, personal data and local clutter out of the image:
+# credentials come from the environment, data from the /data volume.
+.git
+.gitignore
+.dockerignore
+.env
+.env.*
+!.env.example
+data
+output
+cache
+checks.local.toml
+venv
+.venv
+**/__pycache__
+**/*.py[cod]
+examples
+Dockerfile
+compose.yaml
