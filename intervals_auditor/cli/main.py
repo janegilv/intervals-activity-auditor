@@ -106,6 +106,9 @@ examples:
     p.add_argument("--all", action="store_true", help="Include revoked ones (history).")
     p.add_argument("--activity", metavar="ACTIVITY_ID", help="Only those involving this activity.")
 
+    p = command("report", "Write the reports from the database (no sync) and open report.html in your browser.")
+    p.add_argument("--no-open", action="store_true", help="Only write the files, don't open the browser.")
+
     command("checks", "List the checks and whether they're enabled.")
     command("status", "Database, sync and notifier status, and recent runs.")
 
@@ -154,7 +157,7 @@ def cmd_run(app: App, args) -> int:
     print()
     print(render.issues_summary(views))
     if result.report_paths:
-        print(f"Reports: {result.report_paths[0].parent}/report.{{md,json,csv}}")
+        print(f"Report for your browser: {result.report_paths[0].as_uri()}  (or: {render.cli_prefix()} report)")
     if views:
         print()
         print(render.next_steps(views))
@@ -268,6 +271,18 @@ def cmd_checks(settings, args) -> int:
     return 0
 
 
+def cmd_report(app: App, args) -> int:
+    paths = app.runner.write_reports()
+    html = paths[0]
+    print(f"Wrote {', '.join(p.name for p in paths)} to {html.parent}")
+    print(f"Open in a browser: {html.as_uri()}")
+    if not args.no_open:
+        import webbrowser
+        if not webbrowser.open(html.as_uri()):
+            print("Couldn't open a browser from here; open the link above yourself.", file=sys.stderr)
+    return 0
+
+
 def cmd_status(app: App, args) -> int:
     print(render.status(app.queries.status(), app.settings))
     return 0
@@ -309,7 +324,7 @@ def cmd_strava_import(app: App, args) -> int:
 
 COMMANDS = {
     "run": cmd_run, "resync": cmd_run, "monitor": cmd_monitor, "issues": cmd_issues, "show": cmd_show,
-    "ack": cmd_ack, "unack": cmd_unack, "acks": cmd_acks, "status": cmd_status,
+    "ack": cmd_ack, "unack": cmd_unack, "acks": cmd_acks, "status": cmd_status, "report": cmd_report,
     "notify-test": cmd_notify_test, "strava-export": cmd_strava_export, "strava-import": cmd_strava_import,
 }
 

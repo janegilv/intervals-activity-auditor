@@ -88,6 +88,7 @@ python main.py ack i123456789 -n "..."         # all open issues on an activity
 python main.py unack 12              # report it again
 python main.py acks                  # list acknowledgments (--all includes revoked ones)
 
+python main.py report                # open the browser report (no sync)
 python main.py status                # last sync, counts, notifiers, recent runs
 python main.py checks                # which checks exist and are enabled
 python main.py resync                # fetch the full history now
@@ -95,9 +96,18 @@ python main.py monitor --dry-run     # what the monitor would notify, printed in
 python main.py notify-test           # send a test notification
 ```
 
-Every run also writes `output/report.md`, `output/report.json` and
-`output/report.csv`: open and acknowledged issues grouped by activity
-(newest first), with links. The CSV has one row per activity issue.
+Every run (including the scheduled monitor) also writes reports to
+`output/`, with open and acknowledged issues grouped by activity:
+
+- `report.html`: open it in any browser (`python main.py report` does
+  that). It works offline and needs nothing installed. You can search,
+  filter by open/acknowledged, severity, check and activity type, sort,
+  and open activities in Intervals.icu. Tick issues and type a note to
+  get a ready-made `ack` command to copy; each issue also has a copy
+  button. The command prefix (`python main.py`, `./main.py`, ...) can be
+  changed at the bottom of the page.
+- `report.md`, `report.json` and `report.csv` (one row per activity
+  issue) for reading, scripts and spreadsheets.
 
 ## How issues and acknowledgments work
 
@@ -386,7 +396,9 @@ everything below the CLI:
   access and schema migrations (add a function to `MIGRATIONS` in `db.py`
   to change the schema).
 - `intervals_auditor/config.py`: settings from `.env` and `checks.toml`.
-- `intervals_auditor/checks/`, `intervals_auditor/notifiers/`, `intervals_auditor/reporting/`,
-  `intervals_auditor/sources/` (API clients).
+- `intervals_auditor/checks/`, `intervals_auditor/notifiers/`,
+  `intervals_auditor/sources/` (API clients), and
+  `intervals_auditor/reporting/` (the browser report's page is
+  `report_template.html`; the data is embedded when it's written).
 
 Run the tests with `python -m unittest`.

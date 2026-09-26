@@ -61,6 +61,9 @@ class QueryService:
     def report_views(self) -> list[ActivityView]:
         return self.activity_views(states=(OPEN, ACKNOWLEDGED))
 
+    def report_meta(self) -> dict:
+        return {"last_sync": self.state.get(STATE_LAST_SYNC)}
+
     def _known_activity(self, activity_id: str) -> bool:
         return bool(self.activities.get(activity_id)
                     or self.issues.list(activity_id=activity_id)

@@ -126,6 +126,10 @@ class CliTest(unittest.TestCase):
         code, out, _ = self.cli("acks", "--all")
         self.assertIn("REVOKED", out)
 
+        code, out, _ = self.cli("report", "--no-open")
+        self.assertIn("report.html", out)
+        self.assertTrue((self.root / "output" / "report.html").exists())
+
         code, out, _ = self.cli("status")
         self.assertIn("Activities      3", out)
         code, out, _ = self.cli("monitor", "--offline", "--dry-run", "-q")

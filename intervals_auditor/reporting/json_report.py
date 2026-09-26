@@ -27,6 +27,7 @@ def activity_to_dict(view: ActivityView) -> dict:
                 "related": [{"id": rid, "url": url} for rid, url in i.related_urls],
                 "details": i.details,
                 "first_seen_at": i.first_seen_at,
+                "reopen_reason": i.reopen_reason,
                 "acknowledgment": None if i.ack is None else {
                     "id": i.ack.id, "note": i.ack.note, "created_at": i.ack.created_at,
                 },

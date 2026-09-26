@@ -81,9 +81,7 @@ class RunService:
                 self._sync(result, full=full, force_prune=force_prune)
             result.audit = self.audit.run(only=only)
             if reports:
-                result.report_paths = write_reports(self.queries.report_views(), self.output_dir,
-                                                    to_iso(self.clock()))
-                log.debug("Reports written to %s", self.output_dir)
+                result.report_paths = self.write_reports()
         except BaseException as e:
             with self.db.transaction():
                 self.runs.finish(run_id, to_iso(self.clock()), "failed", result.as_dict(), describe_error(e))
@@ -96,6 +94,13 @@ class RunService:
                              result.sync_error or result.strava_error)
         log.info("=== %s finished (run #%d, %s)", command, run_id, status)
         return result
+
+    def write_reports(self) -> list[Path]:
+        """Write report.html/md/json/csv from what's in the database."""
+        paths = write_reports(self.queries.report_views(), self.output_dir, to_iso(self.clock()),
+                              self.queries.report_meta())
+        log.debug("Reports written to %s", self.output_dir)
+        return paths
 
     def _sync(self, result: RunResult, *, full: bool | None, force_prune: bool) -> None:
         sync_service = self.sync_factory()  # ConfigError propagates: nothing to do without credentials
