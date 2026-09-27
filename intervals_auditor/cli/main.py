@@ -118,6 +118,12 @@ examples:
 
     command("notify-test", "Send a test message through the configured notifiers.")
 
+    p = command("reset-issues", "Delete all issues and acknowledgments and find the issues again, "
+                                "numbered from 1 (uses stored data).")
+    p.add_argument("--yes", action="store_true", help="Really do it.")
+    p.add_argument("--notify-again", action="store_true",
+                   help="Let the monitor notify about the issues found again (default: treat them as notified).")
+
     p = command("fetch-streams", "Fetch the activity streams (time series) the checks need now, "
                                  "instead of STREAMS_PER_RUN per run.")
     p.add_argument("--limit", type=int, help="At most this many activities (default: all that are waiting).")
@@ -332,6 +338,24 @@ def cmd_status(app: App, args) -> int:
     return 0
 
 
+def cmd_reset_issues(app: App, args) -> int:
+    counts = app.issues.counts_by_status()
+    acks = len(app.ack_service.list(include_revoked=True))
+    if not args.yes:
+        print(f"This deletes all {sum(counts.values())} issues (their numbers and history) and all {acks} "
+              f"acknowledgments, then runs the checks on the stored data so the issues get new numbers "
+              f"from 1.\nRun it again with --yes to go ahead.")
+        return 1
+    with app.lock():
+        app.audit.forget_all()
+        result = app.runner.run(command="reset-issues", offline=True)
+        quiet = 0 if args.notify_again else app.audit.mark_open_notified()
+    print(render.run_summary(result))
+    print(f"Issues numbered from 1 again: {len(result.audit.new)} found." +
+          (f" They count as already notified, so the monitor won't send them again." if quiet else ""))
+    return 0
+
+
 def cmd_fetch_streams(app: App, args) -> int:
     types = app.audit.stream_activity_types()
     if not types:
@@ -386,7 +410,7 @@ COMMANDS = {
     "ack": cmd_ack, "unack": cmd_unack, "acks": cmd_acks, "status": cmd_status, "report": cmd_report,
     "checks": cmd_checks,
     "notify-test": cmd_notify_test, "strava-export": cmd_strava_export, "strava-import": cmd_strava_import,
-    "fetch-streams": cmd_fetch_streams,
+    "fetch-streams": cmd_fetch_streams, "reset-issues": cmd_reset_issues,
 }
 
 

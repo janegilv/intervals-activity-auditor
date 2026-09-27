@@ -77,6 +77,26 @@ class CliTest(unittest.TestCase):
             code = cli.main(list(argv))
         return code, out.getvalue(), err.getvalue()
 
+    def test_reset_issues(self):
+        self.cli("run", "--offline")
+        self.cli("ack", "3", "-n", "fine")
+        with App(self.settings) as app:  # numbers climb as issues come and go
+            with app.db.transaction():
+                app.issues.conn.execute("UPDATE issues SET number = number + 40")
+        code, out, _ = self.cli("reset-issues")
+        self.assertEqual(code, 1)
+        self.assertIn("--yes", out)
+        code, out, _ = self.cli("reset-issues", "--yes")
+        self.assertEqual(code, 0, out)
+        self.assertIn("numbered from 1 again: 3 found", out)
+        with App(self.settings) as app:
+            self.assertEqual(sorted(r.number for r in app.issues.list()), [1, 2, 3])
+            self.assertEqual(app.ack_service.list(include_revoked=True), [])
+            self.assertTrue(all(r.notified_at for r in app.issues.list()))
+        self.cli("reset-issues", "--yes", "--notify-again")
+        with App(self.settings) as app:
+            self.assertFalse(any(r.notified_at for r in app.issues.list()))
+
     def test_workflow(self):
         code, out, _ = self.cli("--offline", "-q")
         self.assertEqual(code, 0)

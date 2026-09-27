@@ -246,10 +246,21 @@ class IssueRepository:
     def counts_by_status(self) -> dict[str, int]:
         return dict(self.conn.execute("SELECT status, COUNT(*) FROM issues GROUP BY status").fetchall())
 
+    def delete_all(self) -> int:
+        return self.conn.execute("DELETE FROM issues").rowcount
+
+    def mark_open_notified(self, now: str) -> int:
+        """Treat every open issue as already notified about."""
+        return self.conn.execute(
+            "UPDATE issues SET notified_at = ? WHERE status = 'open' AND notified_at IS NULL", (now,)).rowcount
+
 
 class AcknowledgmentRepository:
     def __init__(self, db: Database):
         self.conn = db.conn
+
+    def delete_all(self) -> int:
+        return self.conn.execute("DELETE FROM acknowledgments").rowcount
 
     @staticmethod
     def _from_row(r) -> Acknowledgment:

@@ -94,6 +94,7 @@ python main.py status                # last sync, counts, notifiers, recent runs
 python main.py checks                # which checks exist and are enabled
 python main.py resync                # fetch the full history now
 python main.py fetch-streams         # fetch all activity streams the checks need now
+python main.py reset-issues --yes    # start over: delete all issues and acknowledgments, number from 1
 python main.py monitor --dry-run     # what the monitor would notify, printed instead of sent
 python main.py notify-test           # send a test notification
 ```

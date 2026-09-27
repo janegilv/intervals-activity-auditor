@@ -138,6 +138,21 @@ class AuditService:
         self._log_result(result, by_id)
         return result
 
+    def forget_all(self) -> tuple[int, int]:
+        """Delete every issue (with its number and history) and every
+        acknowledgment; the next run finds the issues again, numbered from 1.
+        Returns (issues, acknowledgments) deleted."""
+        with self.db.transaction():
+            acks = self.acks.delete_all()
+            issues = self.issues.delete_all()
+        log.warning("Deleted all %d issues and %d acknowledgments", issues, acks)
+        return issues, acks
+
+    def mark_open_notified(self) -> int:
+        """Treat all open issues as notified, so the monitor doesn't send them again."""
+        with self.db.transaction():
+            return self.issues.mark_open_notified(to_iso(self.clock()))
+
     def _revoke_stale_acks(self, by_id: dict[str, Activity], now: str) -> list[Acknowledgment]:
         revoked = []
         for ack in self.acks.list():
