@@ -492,6 +492,15 @@ streams as `implausible_pace`, for the types in `activity_types`.
   so it doesn't count as a jump. Jumps don't count as distance for
   `implausible_pace`.
 
+Tunnels (and deep valleys or dense forest) aren't glitches: the position
+stands still while the signal is gone, then catches up. When the speed over
+the stuck stretch and the jump together is at most twice the speed around
+it, that's a signal dropout: not reported, and for `implausible_pace` the
+distance is spread over the time the signal was gone. A barometric
+altimeter can also go wild in a long tunnel (the air pressure changes); if
+that makes a ride look too fast for the grade, turn on elevation correction
+for it in Intervals.icu.
+
 The issue says where each glitch is (h:mm:ss from the start). If it's at
 the very start, cropping the activity usually fixes it; the activity then
 changes, its streams are fetched again and the issue resolves. If you don't

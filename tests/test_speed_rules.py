@@ -142,6 +142,30 @@ class StreamsTest(unittest.TestCase):
         u_turn[3]["data"] = lat[:150] + [lat[150] - (x - lat[150]) for x in lat[150:]]
         self.assertEqual(st.find_jumps(st.parse_api(u_turn)), [])
 
+    def test_tunnel_is_a_dropout_not_a_glitch(self):
+        def tunnel(extra_meters=0.0):
+            # Riding 30 km/h; for a minute in a tunnel the position stands still,
+            # then catches up (plus `extra_meters` that weren't ridden).
+            data = api_streams([(1200, 30, 0)], positions=True)
+            by = {x["type"]: x for x in data}
+            dist, lat = by["distance"]["data"], by["latlng"]["data"]
+            for i in range(600, 660):
+                dist[i], lat[i] = dist[600], lat[600]
+            by["distance"]["data"] = [x + (extra_meters if i >= 660 else 0) for i, x in enumerate(dist)]
+            by["latlng"]["data"] = [x + (extra_meters / METERS_PER_DEGREE if i >= 660 else 0)
+                                    for i, x in enumerate(lat)]
+            return st.parse_api(data)
+
+        parsed = tunnel()
+        self.assertEqual([g.kind for g in st.find_jumps(parsed)], ["dropout"])
+        self.assertEqual(st.gps_jumps(parsed), [])
+        self.assertAlmostEqual(st.top_speed(parsed), 30, delta=1)  # the distance, spread over the tunnel
+        self.assertEqual(run_check([activity("i1")], {"i1": parsed}), {})
+        from intervals_auditor.checks.gps_glitches import GpsGlitchesCheck
+        self.assertEqual(GpsGlitchesCheck({}, streams=lambda a: parsed).run([activity("i1", max_speed=8.4)]), [])
+        # Catching up far more than could have been ridden in that minute is a glitch.
+        self.assertEqual([g.kind for g in st.find_jumps(tunnel(extra_meters=2000))], ["jump"])
+
     def test_gps_catching_up_after_losing_the_signal(self):
         # Walking at 4 km/h, then 260 m in 15 s, then walking on.
         walk = api_streams([(600, 4, 0), (15, 62, 0), (600, 4, 0)])

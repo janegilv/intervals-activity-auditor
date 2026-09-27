@@ -12,6 +12,10 @@ Intervals.icu (or wherever the activity came from).
   or catches up in a short burst after the GPS signal comes back (e.g. 260 m
   in 17 s in the middle of a walk).
 
+Not reported: the signal dropping out in a tunnel (or a deep valley or
+dense forest) -- the position stands still, then catches up at the speed
+you were going. That distance is real, and nothing's wrong with the data.
+
 Both need the activity's streams, fetched from Intervals.icu for the types
 in activity_types. The issue says where each glitch is (h:mm:ss from the
 start), which is what you need to crop it. Indoor/trainer sessions are

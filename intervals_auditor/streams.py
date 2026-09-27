@@ -205,6 +205,15 @@ BURST_MIN_EXCESS_KMH = 25.0
 BURST_CONTEXT_SECONDS = 120.0
 SPIKE_MIN_EXTRA_M = 100.0
 SPIKE_PATH_RATIO = 2.0
+# A jump right after the position stood still (slower than STUCK_KMH) is the
+# GPS signal coming back after a tunnel (or a deep valley or dense forest):
+# the distance is real, it just arrives all at once. It's a dropout, not a
+# glitch, when the speed over the stuck stretch and the jump together is at
+# most DROPOUT_MAX_SPEED_RATIO times the faster of the two minutes before
+# and after (slower is always possible: you may have stopped in there).
+STUCK_KMH = 2.0
+DROPOUT_MAX_SECONDS = 900.0
+DROPOUT_MAX_SPEED_RATIO = 2.0
 # Altitude changing faster than this (m/s) is the device correcting its
 # altitude (e.g. right after the start, or after losing the GPS signal),
 # not climbing or descending.
@@ -220,7 +229,8 @@ class Jump(NamedTuple):
     at: float       # seconds since the start
     meters: float   # distance the watch added
     seconds: float
-    kind: str       # "spike" (out and back) or "jump" (the position leaps ahead)
+    kind: str       # "spike" (out and back), "jump" (the position leaps ahead) or
+                    # "dropout" (the signal lost, e.g. in a tunnel: first is where it got stuck)
     straight: float | None = None  # straight-line meters from before to after, if positions are known
 
 
@@ -296,20 +306,40 @@ def find_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[Jump]:
                     jumps.append(Jump(i - 1, i, t[i - 1], d[i] - d[i - 1], t[i] - t[i - 1],
                                       "spike" if out_and_back else "jump", step))
         k = end + 1
+    jumps = [_as_dropout(jump, t, d, speeds, before, after) or jump if jump.kind == "jump" else jump
+             for jump in jumps]
     cache[jump_kmh] = jumps
     return jumps
 
 
+def _as_dropout(jump: Jump, t, d, speeds, before, after) -> Jump | None:
+    """The jump as a signal dropout (see STUCK_KMH), or None if it isn't one."""
+    stuck = jump.first
+    while stuck > 0 and speeds[stuck] < STUCK_KMH and t[jump.first] - t[stuck - 1] <= DROPOUT_MAX_SECONDS:
+        stuck -= 1
+    if stuck == jump.first:
+        return None
+    seconds = t[jump.last] - t[stuck]
+    meters = d[jump.last] - d[stuck]
+    speed = meters / seconds * 3.6 if seconds > 0 else 0.0
+    if speed > DROPOUT_MAX_SPEED_RATIO * max(before[stuck], after[jump.last]):
+        return None
+    return Jump(stuck, jump.last, t[stuck], meters, seconds, "dropout", jump.straight)
+
+
 def gps_jumps(streams: Streams, jump_kmh: float = GPS_JUMP_KMH) -> list[tuple[float, float, float]]:
-    """(seconds since the start, meters, over how many seconds) per GPS glitch."""
-    return [(j.at, j.meters, j.seconds) for j in find_jumps(streams, jump_kmh)]
+    """(seconds since the start, meters, over how many seconds) per GPS glitch
+    (dropouts, e.g. tunnels, aren't glitches)."""
+    return [(j.at, j.meters, j.seconds) for j in find_jumps(streams, jump_kmh) if j.kind != "dropout"]
 
 
 def _distance_without_jumps(streams: Streams, jump_kmh: float) -> list[float]:
     """Cumulative distance without GPS glitches: a spike out and back counts
-    as the straight line from before to after it; a jump as no distance (the
-    real movement during it is unknown; leaving it out can't make anything
-    look too fast). Kept on the streams object, as several rules use it."""
+    as the straight line from before to after it; a dropout's distance is
+    spread over the time the signal was lost; a jump counts as no distance
+    (the real movement during it is unknown; leaving it out can't make
+    anything look too fast). Kept on the streams object, as several rules
+    use it."""
     cache = streams.__dict__.setdefault("_without_jumps", {})
     if jump_kmh in cache:
         return cache[jump_kmh]
@@ -321,6 +351,8 @@ def _distance_without_jumps(streams: Streams, jump_kmh: float) -> list[float]:
         rate = 0.0
         if jump.kind == "spike" and jump.straight is not None and jump.seconds > 0:
             rate = jump.straight / jump.seconds
+        elif jump.kind == "dropout" and jump.seconds > 0:  # the distance, spread over the time it took
+            rate = jump.meters / jump.seconds
         in_glitch.update((k, rate) for k in range(jump.first + 1, jump.last + 1))
     clean = [0.0] * len(t)
     for k in range(1, len(t)):
