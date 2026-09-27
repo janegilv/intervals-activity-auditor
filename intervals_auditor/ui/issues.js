@@ -6,6 +6,7 @@
  *     storageKey: "…",                    // sessionStorage key (per tab)
  *     checks: {name: description},
  *     command: "python main.py",          // static: prefix of copied commands
+ *     sort: "newest" | "severity" | …,    // the sort a new tab starts with
  *     activityHref: (activity) => "#…",   // live: link for the activity name
  *     onAck: async (numbers, note) => {}, // live: acknowledge issues
  *     onUnack: async (numbers) => {},     // live: report issues again
@@ -97,11 +98,12 @@
 
   // ---------- the browser ----------
   function create(root, options) {
-    const opts = Object.assign({ mode: "static", storageKey: "intervals-auditor", checks: {}, command: "python main.py" }, options);
+    const opts = Object.assign({ mode: "static", storageKey: "intervals-auditor", checks: {}, command: "python main.py",
+                                 sort: "newest" }, options);
     const live = opts.mode === "live";
     const state = {
       q: "", show: "open", sev: new Set(), checks: new Set(), type: "",
-      sort: "newest", details: false, prefix: opts.command,
+      sort: opts.sort, details: false, prefix: opts.command,
       selected: new Set(), ackForm: null, busy: false,
     };
     let activities = [], allIssues = [], byNumber = new Map(), types = [], checkNames = [];

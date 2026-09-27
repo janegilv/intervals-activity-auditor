@@ -105,6 +105,8 @@
     const browser = UI.IssueBrowser.create($("browser"), {
       mode: "live",
       storageKey: "intervals-auditor-web-issues",
+      // Most severe first, so a GPS glitch (info) never pushes a real problem down.
+      sort: "severity",
       checks: data.checks,
       activityHref: (a) => "#/activity/" + encodeURIComponent(a.id),
       onAck: async (numbers, note) => {

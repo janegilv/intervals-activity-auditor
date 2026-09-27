@@ -194,7 +194,8 @@ python main.py serve              # http://127.0.0.1:8080/
 ```
 
 The web interface shows the same activity-centric issue list as
-`report.html`, but acknowledging and unacknowledging happen right there
+`report.html` (most severe first; pick another order in the sort menu),
+but acknowledging and unacknowledging happen right there
 (one issue, or tick several / "Select all" and do them in one go). Each
 activity has its own page with its issues, their history and its
 acknowledgments. There are pages for all acknowledgments (including
