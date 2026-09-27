@@ -34,6 +34,6 @@ class GarminLinkOnlyCheck(ActivityCheck):
                 a,
                 "Activity matches the configured Garmin-only linkage heuristic",
                 [{"rule": "garmin_only_link", "details": details}],
-                "info",
+                "low",
             ))
         return issues

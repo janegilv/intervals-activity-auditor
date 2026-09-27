@@ -15,6 +15,6 @@ class UnderTimeLimitCheck(ActivityCheck):
                     [{"rule": "duration_under_limit",
                       "duration_seconds": a.duration_seconds,
                       "limit_seconds": limit}],
-                    "info"
+                    "low",
                 ))
         return issues

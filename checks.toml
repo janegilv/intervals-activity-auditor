@@ -126,3 +126,7 @@ minimum_gap_seconds = 600
 # A negative gap (moving_time > elapsed_time) is impossible and always
 # flagged once it exceeds this tolerance; smaller ones are rounding noise.
 negative_gap_tolerance_seconds = 5
+# Gaps are reported as "low", or "medium" from this many seconds of stopped
+# time (6 h): then the recording was usually saved hours after the activity
+# ended (or started hours before it), and trimming the start or end fixes it.
+major_gap_seconds = 21600

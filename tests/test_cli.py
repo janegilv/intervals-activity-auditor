@@ -83,7 +83,7 @@ class CliTest(unittest.TestCase):
         self.assertIn("3 open issues on 3 activities", out)
         self.assertIn("  activity: i103  https://intervals.icu/activities/i103", out)
         # Issues are numbered in the order found: 1/2 the i101/i102 duplicate pair, 3 the short i103.
-        self.assertIn("  issue: 3  [INFO] under_time_limit", out)
+        self.assertIn("  issue: 3  [LOW] under_time_limit", out)
         self.assertIn('python main.py ack 3 -n "why it\'s fine"', out)
         self.assertIn('python main.py ack 3 2 -n "..."', out)
         self.assertTrue((self.root / "output" / "report.md").exists())

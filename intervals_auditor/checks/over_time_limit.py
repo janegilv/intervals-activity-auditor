@@ -15,6 +15,6 @@ class OverTimeLimitCheck(ActivityCheck):
                     [{"rule": "duration_over_limit",
                       "duration_seconds": a.duration_seconds,
                       "limit_seconds": limit}],
-                    "info"
+                    "low",
                 ))
         return issues

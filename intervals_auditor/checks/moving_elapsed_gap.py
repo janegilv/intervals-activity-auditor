@@ -20,6 +20,9 @@ class MovingElapsedGapCheck(ActivityCheck):
         # computed the two fields rather than a real error, so small
         # negative gaps are tolerated rather than flagged.
         negative_tolerance = int(self.config.get("negative_gap_tolerance_seconds", 5))
+        # Stopped this long is rarely a break: usually the recording was
+        # saved hours after the activity ended (or started hours before it).
+        major_gap = int(self.config.get("major_gap_seconds", 6 * 3600))
 
         issues = []
         for a in activities:
@@ -49,7 +52,7 @@ class MovingElapsedGapCheck(ActivityCheck):
             issues.append(self.issue(
                 a,
                 f"Elapsed time exceeds moving time by {gap_percent:.0f}% "
-                f"({gap}s of unpaused stopped time)",
+                f"({_hours(gap)} of unpaused stopped time)",
                 [{
                     "rule": "moving_elapsed_gap",
                     "moving_time_seconds": moving,
@@ -59,7 +62,13 @@ class MovingElapsedGapCheck(ActivityCheck):
                 }],
                 # A large gap is a heads-up, not necessarily bad data -- a
                 # long summit break on a hike produces exactly this pattern
-                # legitimately -- so this stays informational by default.
-                "info",
+                # legitimately -- unless it's many hours.
+                "medium" if gap >= major_gap else "low",
             ))
         return issues
+
+
+def _hours(seconds: int) -> str:
+    if seconds < 3600:
+        return f"{seconds // 60} min"
+    return f"{seconds // 3600} h {seconds % 3600 // 60:02d} min"

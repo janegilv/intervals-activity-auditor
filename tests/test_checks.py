@@ -57,6 +57,17 @@ class SingleActivityChecksTest(unittest.TestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn("SHORT DURATION", issues[0].details[0]["details"])
 
+    def test_severities_leave_info_to_gps_glitches(self):
+        from intervals_auditor.checks.moving_elapsed_gap import MovingElapsedGapCheck
+        from intervals_auditor.checks.under_time_limit import UnderTimeLimitCheck
+        acts = activities(payload("i1", moving_time=1200, elapsed_time=1200 + 3 * 3600),   # a long break
+                          payload("i2", moving_time=1163, elapsed_time=1163 + 46819))      # saved 13 h later
+        found = {i.activity_id: i for i in MovingElapsedGapCheck({"minimum_gap_percent": 80}).run(acts)}
+        self.assertEqual((found["i1"].severity, found["i2"].severity), ("low", "medium"))
+        self.assertIn("(13 h 00 min of unpaused stopped time)", found["i2"].summary)
+        short = UnderTimeLimitCheck().run(activities(payload("i3", seconds=30)))
+        self.assertEqual(short[0].severity, "low")
+
     def test_registry(self):
         self.assertEqual(set(CHECKS), {
             "duplicate_overlap", "under_time_limit", "over_time_limit", "garmin_link_only",

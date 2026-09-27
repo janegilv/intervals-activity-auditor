@@ -118,6 +118,10 @@ Every run (including the scheduled monitor) also writes reports to
 
 ## How issues and acknowledgments work
 
+Each issue has a severity: `high`, `medium`, `low` or `info`. `info` is
+used only for GPS glitches (`gps_glitches`), so filtering out `info` on the
+Issues page (or in `report.html`) hides them and nothing else.
+
 - **Everything is per activity.** A check that compares activities (like
   `duplicate_overlap`) reports a pair as one issue on each of the two
   activities, each naming the other as related.
@@ -510,6 +514,11 @@ It also covers a second, more useful case: a *negative* gap (moving time
 exceeding elapsed time, which shouldn't be possible) is always flagged at
 `medium` severity once it exceeds `negative_gap_tolerance_seconds`. The
 check is left in place for that case and for occasional manual use:
+
+When it's on, a gap is reported as `low`, or `medium` from
+`major_gap_seconds` (6 hours) of stopped time: then the recording was
+usually saved hours after the activity ended (or started hours before it),
+and trimming the start or end in Intervals.icu fixes it.
 
 ```bash
 python main.py --offline --only moving_elapsed_gap
