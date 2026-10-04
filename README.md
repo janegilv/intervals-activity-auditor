@@ -8,11 +8,10 @@ Failed checks must manually be fixed, the script is "read-only"
 - When changing activities:
   - Export original from garmin
   - Make necessary changes
-  - Delete old garmin/strava activity
-  - Add edit FIT file to garmin/strava.
+  - Delete old activity from garmin, strava and intervals
+  - Add new FIT file to garmin and strava.
     - Garmin does not send manually updated activities to strava
-    - Intervals gets the activity from garmin (maybe it fetches itself?) 
-  - Manual add of garmin to intervals.icu might be necessary.
+    - Strava: "Don't publish to Home or Club feeds" (must save and then edit activity)
 - Duplicate/overlapping activities in intervals.icu:
 
 ## More detailed information
@@ -22,6 +21,7 @@ Failed checks must manually be fixed, the script is "read-only"
 # Tools
 ( In order of preference? )
 - https://fitfileeditor.com/ (Used for cropping)
+  - I have trouble getting rid of the last samples now. Use fitfiletools to get around this last time.
 - https://www.fitfiletools.com/
   - Don't really like the section remover.
 - https://www.fitfileviewer.com/
